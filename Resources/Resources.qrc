@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/ColorSchemes">
+        <file>DarkPastels.colorscheme</file>
+	<file>Linux.colorscheme</file>
+    </qresource>
+    <qresource prefix="/web">
+	<file>monaco.html</file>
+    </qresource>
+</RCC>

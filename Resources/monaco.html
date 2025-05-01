@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Monaco Editor in Qt</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.js"></script>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #editor {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="editor"></div>
+
+    <script>
+        // Monaco loader config
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' } });
+
+        require(['vs/editor/editor.main'], function () {
+            // Global editor reference
+            window.editor = monaco.editor.create(document.getElementById('editor'), {
+                minimap: { enabled: false }
+            });
+
+            // Handle resizing
+            function resetEditorLayout() {
+                if (window.editor) {
+                    const container = document.getElementById('editor');
+                    const rect = container.getBoundingClientRect();
+                    window.editor.layout({ width: rect.width, height: rect.height });
+                }
+            }
+
+            window.addEventListener('resize', resetEditorLayout);
+            window.triggerEditorLayout = resetEditorLayout;
+
+            // QWebChannel bridge setup
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                window.bridge = channel.objects.bridge;
+
+                // Signals from C++
+                if (window.bridge) {
+                    // Load text into the editor
+                    window.bridge.loadText.connect(function (text) {
+                        if (window.editor) {
+                            window.editor.setValue(text);
+                        } else {
+                            console.error('Editor not initialized');
+                        }
+                    });
+
+                    // Set the editor theme
+                    window.bridge.setTheme.connect(function (theme) {
+                        monaco.editor.setTheme(theme);
+                    });
+
+                    // Set the editor language
+                    window.bridge.setLanguage.connect(function (language) {
+                        if (window.editor && window.editor.getModel()) {
+                            monaco.editor.setModelLanguage(window.editor.getModel(), language);
+                        } else {
+                            console.error('Editor or model not available');
+                        }
+                    });
+                } else {
+                    console.error('Bridge not initialized');
+                }
+            });
+
+            // Function to set language (for direct calls)
+            window.setLanguage = function (lang) {
+                if (window.editor && window.editor.getModel()) {
+                    monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+                } else {
+                    console.error('Editor or model not available');
+                }
+            };
+
+            resetEditorLayout(); // Initial layout
+        });
+    </script>
+</body>
+</html>
