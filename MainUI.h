@@ -49,6 +49,7 @@ private:
     QAction *saveAction;
     QWebEngineView *view;
     BridgeManager *bridgeManager;
+    FileSidebarWidget *sidebar;
     QMap<QString, QString> extensionToLanguageMap;
 
     void setupUI() {
@@ -63,7 +64,7 @@ private:
         QSplitter *splitterHoriz = new QSplitter(Qt::Horizontal);
         QSplitter *splitterVert = new QSplitter(Qt::Vertical);
 
-        FileSidebarWidget *sidebar = new FileSidebarWidget;
+        sidebar = new FileSidebarWidget;
 
         splitterVert->addWidget(view);
         splitterVert->addWidget(terminal);
@@ -104,8 +105,9 @@ private:
     }
 
     void connectItems() {
-        connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
-        connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+        QObject::connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
+        QObject::connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+        QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
     }
 
     bool isDarkMode() {
@@ -172,6 +174,28 @@ private:
     }
 
 private slots:
+    void openFromPath(const QString &filePath) {
+        if (filePath.isEmpty()) return;
+
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, tr("Error"), tr("Cannot open file: ") + file.errorString());
+            return;
+        }
+
+        QTextStream in(&file);
+        QString content = in.readAll();
+        file.close();
+
+        bridgeManager->loadText(content);
+
+        QFileInfo fileInfo(filePath);
+        QString extension = fileInfo.suffix().toLower();
+        QString language = extensionToLanguageMap.value(extension, "plaintext");
+
+        if (!language.isEmpty()) bridgeManager->setLanguage(language);
+    }
+
     void openFile() {
         QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("All Files (*);;Text Files (*.txt);;C++ Files (*.cpp *.h)"));
         if (fileName.isEmpty()) return;
@@ -186,15 +210,12 @@ private slots:
         QString content = in.readAll();
         file.close();
 
-        // Emit the loadText signal through BridgeManager to load content into Monaco Editor
         bridgeManager->loadText(content);
 
-        // Set the language based on file extension
         QFileInfo fileInfo(fileName);
         QString extension = fileInfo.suffix().toLower();
         QString language = extensionToLanguageMap.value(extension, "plaintext");
 
-        // Run JavaScript to set the language in Monaco Editor
         if (!language.isEmpty()) bridgeManager->setLanguage(language);
     }
 

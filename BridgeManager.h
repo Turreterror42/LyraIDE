@@ -5,8 +5,7 @@
 #include <QString>
 #include <QWebEngineView>
 #include <QWebChannel>
-#include <QFile>
-#include <QTextStream>
+#include <QVariant>
 #include <QJsonDocument>
 #include <QDebug>
 
@@ -14,9 +13,7 @@ class BridgeManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit BridgeManager(QWebEngineView* view, QObject *parent = nullptr)
-        : QObject(parent), m_view(view)
-    {
+    explicit BridgeManager(QWebEngineView* view, QObject *parent = nullptr) : QObject(parent), m_view(view) {
         m_channel = new QWebChannel(this);
         m_channel->registerObject("bridge", this);
         m_view->page()->setWebChannel(m_channel);
@@ -26,19 +23,22 @@ signals:
     void textRetrieved(const QString &text);
 
 public slots:
-    // Called from C++ to load text into Monaco
     void loadText(const QString &text) {
-        // Escape text for JavaScript safely
-        QString escaped = QString::fromUtf8(QJsonDocument::fromVariant(QVariant(text)).toJson(QJsonDocument::Compact));
-        m_view->page()->runJavaScript("window.editor && window.editor.setValue(" + escaped + ");");
+        QString sanitizedText = text;
+        sanitizedText = sanitizedText.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
+        const QString js = QString("if (window.editor) window.editor.setValue('%1');").arg(sanitizedText);
+        qDebug() << js;
+        m_view->page()->runJavaScript(js);
     }
 
     void setTheme(const QString &theme) {
-        m_view->page()->runJavaScript("monaco.editor.setTheme('" + theme + "');");
+        const QString js = QString("monaco.editor.setTheme('%1');").arg(theme);
+        m_view->page()->runJavaScript(js);
     }
 
     void setLanguage(const QString &language) {
-        if (!language.isEmpty()) m_view->page()->runJavaScript(QString("if (window.setLanguage) setLanguage('%1');").arg(language));
+        const QString js = QString("if (window.setLanguage) setLanguage('%1');").arg(language);
+        m_view->page()->runJavaScript(js);
     }
 
     void retrieveText() {

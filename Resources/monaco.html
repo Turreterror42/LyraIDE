@@ -21,72 +21,73 @@
 </head>
 <body>
     <div id="editor"></div>
-
     <script>
-        // Monaco loader config
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' } });
 
         require(['vs/editor/editor.main'], function () {
-            // Global editor reference
             window.editor = monaco.editor.create(document.getElementById('editor'), {
+                value: "",
+                language: "plaintext",
                 minimap: { enabled: false }
             });
 
-            // Handle resizing
             function resetEditorLayout() {
-                if (window.editor) {
-                    const container = document.getElementById('editor');
-                    const rect = container.getBoundingClientRect();
-                    window.editor.layout({ width: rect.width, height: rect.height });
-                }
+                const container = document.getElementById('editor');
+                const rect = container.getBoundingClientRect();
+                window.editor.layout({ width: rect.width, height: rect.height });
             }
 
             window.addEventListener('resize', resetEditorLayout);
             window.triggerEditorLayout = resetEditorLayout;
 
-            // QWebChannel bridge setup
+            // Set up the QWebChannel communication
             new QWebChannel(qt.webChannelTransport, function (channel) {
-                window.bridge = channel.objects.bridge;
+            // Access the C++ BridgeManager object
+            window.bridge = channel.objects.bridge;
 
-                // Signals from C++
-                if (window.bridge) {
-                    // Load text into the editor
-                    window.bridge.loadText.connect(function (text) {
-                        if (window.editor) {
-                            window.editor.setValue(text);
-                        } else {
-                            console.error('Editor not initialized');
-                        }
-                    });
-
-                    // Set the editor theme
-                    window.bridge.setTheme.connect(function (theme) {
-                        monaco.editor.setTheme(theme);
-                    });
-
-                    // Set the editor language
-                    window.bridge.setLanguage.connect(function (language) {
-                        if (window.editor && window.editor.getModel()) {
-                            monaco.editor.setModelLanguage(window.editor.getModel(), language);
-                        } else {
-                            console.error('Editor or model not available');
-                        }
-                    });
-                } else {
-                    console.error('Bridge not initialized');
-                }
-            });
-
-            // Function to set language (for direct calls)
-            window.setLanguage = function (lang) {
-                if (window.editor && window.editor.getModel()) {
-                    monaco.editor.setModelLanguage(window.editor.getModel(), lang);
-                } else {
-                    console.error('Editor or model not available');
+            // Example of calling C++ function from JavaScript (loadText)
+            window.bridge.loadText = function(text) {
+                try {
+                    if (window.editor) {
+                        console.log("Setting text:", text);  // Log the text to debug
+                        window.editor.setValue(text);
+                    } else {
+                        console.error("Editor not initialized.");
+                    }
+                } catch (e) {
+                    console.error("Error setting text in Monaco editor:", e);
                 }
             };
 
-            resetEditorLayout(); // Initial layout
+            // Example of calling C++ function from JavaScript (setTheme)
+            window.bridge.setTheme = function(theme) {
+                monaco.editor.setTheme(theme);
+            };
+
+            // Example of calling C++ function from JavaScript (setLanguage)
+            window.bridge.setLanguage = function(lang) {
+                if (window.editor && window.editor.getModel()) {
+                    monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+                } else {
+                    console.error("Editor or model not ready");
+                }
+            };
+
+            // Example of calling C++ function from JavaScript (retrieveText)
+            window.bridge.retrieveText = function() {
+                // Retrieve the text from Monaco editor via C++
+                window.bridge.retrieveText();
+            };
+        });
+
+        // For direct language change (JavaScript calling C++)
+        window.setLanguage = function (lang) {
+            if (window.editor && window.editor.getModel()) {
+                monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+            }
+        };
+
+        resetEditorLayout();  // Initial layout reset
         });
     </script>
 </body>
