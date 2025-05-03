@@ -8,6 +8,8 @@
 #include <QVariant>
 #include <QJsonDocument>
 #include <QDebug>
+#include <QFile>
+#include <QTextStream>
 
 class BridgeManager : public QObject
 {
@@ -23,11 +25,22 @@ signals:
     void textRetrieved(const QString &text);
 
 public slots:
-    void loadText(const QString &text) {
-        QString sanitizedText = text;
-        sanitizedText = sanitizedText.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
-        const QString js = QString("if (window.editor) window.editor.setValue('%1');").arg(sanitizedText);
-        qDebug() << js;
+    void loadText(const QString &filePath) {
+        QFile file(filePath);
+        QString fileContent;
+
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&file);
+            fileContent = in.readAll();
+            file.close();
+        } else {
+            qDebug() << "Failed to open file:" << filePath;
+            fileContent = "";
+        }
+
+        QString sanitizedContent = fileContent;
+        sanitizedContent.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
+        const QString js = QString("if (window.editor) window.editor.setValue('%1');").arg(sanitizedContent);
         m_view->page()->runJavaScript(js);
     }
 

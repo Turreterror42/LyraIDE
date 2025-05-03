@@ -1,9 +1,16 @@
 <RCC>
     <qresource prefix="/ColorSchemes">
-        <file>DarkPastels.colorscheme</file>
-	<file>Linux.colorscheme</file>
+        <file>Dark.colorscheme</file>
+        <file>Light.colorscheme</file>
     </qresource>
     <qresource prefix="/web">
-	<file>monaco.html</file>
+        <file>monaco.html</file>
+    </qresource>
+    <qresource prefix="/images">
+        <file>icons/directory.png</file>
+        <file>icons/fileBin.png</file>
+        <file>icons/fileText.png</file>
+        <file>icons/fileImg.png</file>
+        <file>icons/icon.ico</file>
     </qresource>
 </RCC>

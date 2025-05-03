@@ -38,6 +38,37 @@ class MainWindow : public QMainWindow {
 public:
     MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
         initMonaco();
+        setStyleSheet(R"(
+            /* Main Window */
+            QMainWindow {
+                background-color: #21252b;
+                color: #abb2bf;
+                font-family: 'Source Code Pro';
+            }
+
+            /* Splitter */
+            QSplitter {
+                margin: 0;
+            }
+            QSplitter::handle {
+                background-color: #181a1f;
+            }
+            QSplitter::handle:horizontal {
+                width: 1px;
+            }
+            QSplitter::handle:vertical {
+                height: 1px;
+            }
+
+            QStatusBar {
+                border-top: 1px solid #181a1f;
+            }
+
+            /* QMenu item pressed (applies only when the item is pressed) */
+            QMenu::item:selected {
+                background-color: #0e63bd;
+            }
+        )");
     }
     ~MainWindow() {
         qDebug() << "Good Bye";
@@ -50,11 +81,15 @@ private:
     QWebEngineView *view;
     BridgeManager *bridgeManager;
     FileSidebarWidget *sidebar;
+    QStatusBar *statusBar;
     QMap<QString, QString> extensionToLanguageMap;
 
     void setupUI() {
         QWidget *window = new QWidget;
+
         QVBoxLayout *layout = new QVBoxLayout(window);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
 
         QTermWidget *terminal = new QTermWidget;
         terminal->setShellProgram("/bin/bash");
@@ -72,8 +107,14 @@ private:
         splitterHoriz->addWidget(sidebar);
         splitterHoriz->addWidget(splitterVert);
 
+        splitterHoriz->setHandleWidth(1);
+        splitterVert->setHandleWidth(1);
+
         splitterHoriz->setOpaqueResize(true);
         splitterVert->setOpaqueResize(true);
+
+        splitterHoriz->setContentsMargins(0, 0, 0, 0);
+        splitterVert->setContentsMargins(0, 0, 0, 0);
 
         splitterHoriz->setSizes({size().width() / 6, 5 * size().width() / 6});
         splitterVert->setSizes({5 * size().height() / 6, size().height() / 6});
@@ -81,16 +122,21 @@ private:
         layout->addWidget(splitterHoriz);
         setCentralWidget(window);
 
+        statusBar = new QStatusBar;
+        setStatusBar(statusBar);
+        statusBar->showMessage("Ready");
+
         createMenu();
         connectItems();
+        setWindowIcon(QIcon(":/images/icons/icon.ico"));
         initializeExtensionMap();
 
         if (isDarkMode()) {
-            terminal->setColorScheme(":/ColorSchemes/DarkPastels.colorscheme");
+            terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
             bridgeManager->setTheme("vs-dark");
         } else {
-            terminal->setColorScheme(":/ColorSchemes/Linux.colorscheme");
-            bridgeManager->setTheme("vs");
+            terminal->setColorScheme(":/ColorSchemes/Light.colorscheme");
+            bridgeManager->setTheme("vs-light");
         }
     }
 
@@ -118,7 +164,7 @@ private:
     void initMonaco() {
         view = new QWebEngineView;
         view->setUrl(QUrl("qrc:///web/monaco.html"));
-        bridgeManager = new BridgeManager(view);  // parented to view
+        bridgeManager = new BridgeManager(view);
 
         connect(view, &QWebEngineView::loadFinished, this, [this]() {
             qDebug() << "Monaco loaded. Sending initialization message.";
@@ -173,57 +219,35 @@ private:
         };
     }
 
-private slots:
-    void openFromPath(const QString &filePath) {
-        if (filePath.isEmpty()) return;
-
-        QFile file(filePath);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, tr("Error"), tr("Cannot open file: ") + file.errorString());
-            return;
-        }
-
-        QTextStream in(&file);
-        QString content = in.readAll();
-        file.close();
-
-        bridgeManager->loadText(content);
-
-        QFileInfo fileInfo(filePath);
+    void setLanguageOfFile(const QString &fileNameOfExtension) {
+        QFileInfo fileInfo(fileNameOfExtension);
         QString extension = fileInfo.suffix().toLower();
         QString language = extensionToLanguageMap.value(extension, "plaintext");
 
         if (!language.isEmpty()) bridgeManager->setLanguage(language);
+        statusBar->showMessage(QString("Editing: %1 | Language: %2").arg(fileInfo.fileName(), language));
+
+        setWindowTitle(QString("LyraIDE - %1").arg(fileInfo.fileName()));
+    }
+
+private slots:
+    void openFromPath(const QString &filePath) {
+        if (filePath.isEmpty()) return;
+        bridgeManager->loadText(filePath);
+        setLanguageOfFile(filePath);
     }
 
     void openFile() {
         QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("All Files (*);;Text Files (*.txt);;C++ Files (*.cpp *.h)"));
         if (fileName.isEmpty()) return;
-
-        QFile file(fileName);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, tr("Error"), tr("Cannot open file: ") + file.errorString());
-            return;
-        }
-
-        QTextStream in(&file);
-        QString content = in.readAll();
-        file.close();
-
-        bridgeManager->loadText(content);
-
-        QFileInfo fileInfo(fileName);
-        QString extension = fileInfo.suffix().toLower();
-        QString language = extensionToLanguageMap.value(extension, "plaintext");
-
-        if (!language.isEmpty()) bridgeManager->setLanguage(language);
+        bridgeManager->loadText(fileName);
+        setLanguageOfFile(fileName);
     }
 
     void saveFile() {
         QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), "", tr("All Files (*);;Text Files (*.txt);;C++ Files (*.cpp *.h)"));
         if (fileName.isEmpty()) return;
 
-        // Retrieve the current content from Monaco Editor
         QString content;
         QEventLoop loop;
         connect(bridgeManager, &BridgeManager::textRetrieved, this, [&content, &loop](const QString &text) {
@@ -243,6 +267,7 @@ private slots:
         QTextStream out(&file);
         out << content;
         file.close();
+        statusBar->showMessage(QString("Saved: %1").arg(fileName));
     }
 };
 
