@@ -10,6 +10,11 @@
 #include <QDebug>
 #include <QFile>
 #include <QTextStream>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QRegularExpression>
+#include <QByteArray>
+#include <QTextStream>
 
 class BridgeManager : public QObject
 {
@@ -28,20 +33,54 @@ public slots:
     void loadText(const QString &filePath) {
         QFile file(filePath);
         QString fileContent;
+        bool isBinary = false;
 
-        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&file);
-            fileContent = in.readAll();
+        if (file.open(QIODevice::ReadOnly)) {
+            QByteArray fileData = file.readAll();
             file.close();
+            setReadOnly(false);
+
+            static const QRegularExpression regex("[^\x20-\x7E\x09\x0A\x0D]");
+            isBinary = regex.match(fileData).hasMatch();
+
+            if (isBinary) {
+                QMessageBox::StandardButton reply;
+                reply = QMessageBox::question(nullptr, "Binary File", "The file appears to be binary. Do you want to open it in hexadecimal format?", QMessageBox::Yes | QMessageBox::No);
+
+                if (reply == QMessageBox::Yes) {
+
+                    QString hexContent;
+                    int byteCount = 0;
+                    setReadOnly(true);
+
+                    for (int i = 0; i < fileData.size(); ++i) {
+                        hexContent.append(QString("0x%1 ").arg(static_cast<unsigned char>(fileData[i]), 2, 16, QChar('0')).toLower());
+
+                        byteCount++;
+
+                        if (byteCount == 16) {
+                            hexContent.append("\n");
+                            byteCount = 0;
+                        }
+                    }
+
+                    if (hexContent.endsWith(" ")) hexContent.chop(1);
+
+                    fileData = hexContent.toUtf8();
+                } else {
+                    qDebug() << "User chose not to open the binary file.";
+                }
+            }
+
+            QString sanitizedContent = QString("%1").arg(fileData);
+            sanitizedContent.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
+            const QString js = QString("if (window.editor) window.editor.setValue('%1');").arg(sanitizedContent);
+            m_view->page()->runJavaScript(js);
+
         } else {
             qDebug() << "Failed to open file:" << filePath;
             fileContent = "";
         }
-
-        QString sanitizedContent = fileContent;
-        sanitizedContent.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
-        const QString js = QString("if (window.editor) window.editor.setValue('%1');").arg(sanitizedContent);
-        m_view->page()->runJavaScript(js);
     }
 
     void setTheme(const QString &theme) {
@@ -51,6 +90,11 @@ public slots:
 
     void setLanguage(const QString &language) {
         const QString js = QString("if (window.setLanguage) setLanguage('%1');").arg(language);
+        m_view->page()->runJavaScript(js);
+    }
+
+    void setReadOnly(const bool YN) {
+        const QString js = QString("if (window.editor) window.editor.updateOptions({ readOnly: %1 });").arg(YN);
         m_view->page()->runJavaScript(js);
     }
 

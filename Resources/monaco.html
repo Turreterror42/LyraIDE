@@ -59,12 +59,10 @@
                 }
             };
 
-            // Example of calling C++ function from JavaScript (setTheme)
             window.bridge.setTheme = function(theme) {
                 monaco.editor.setTheme(theme);
             };
 
-            // Example of calling C++ function from JavaScript (setLanguage)
             window.bridge.setLanguage = function(lang) {
                 if (window.editor && window.editor.getModel()) {
                     monaco.editor.setModelLanguage(window.editor.getModel(), lang);
@@ -73,7 +71,6 @@
                 }
             };
 
-            // Example of calling C++ function from JavaScript (retrieveText)
             window.bridge.retrieveText = function() {
                 // Retrieve the text from Monaco editor via C++
                 window.bridge.retrieveText();

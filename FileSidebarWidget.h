@@ -11,31 +11,46 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QIcon>
+#include <QStyledItemDelegate>
+#include <QPainter>
+#include <QStyleOptionViewItem>
+#include <QApplication>
 
-class CustomFileSystemModel : public QFileSystemModel {
-    Q_OBJECT
+class NoTintIconDelegate : public QStyledItemDelegate {
 public:
-    explicit CustomFileSystemModel(QObject *parent = nullptr) : QFileSystemModel(parent) {}
+    explicit NoTintIconDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
 
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override {
-        if (role == Qt::DecorationRole && index.column() == 0) {
-            QFileInfo info = fileInfo(index);
-            QIcon icon;
-            if (info.isDir()) {
-                icon = QIcon(":/images/icons/directory.png");
-            } else if (info.isFile()) {
-                QString suffix = info.suffix().toLower();
-                if (QStringList{"png", "jpg", "jpeg", "gif", "bmp"}.contains(suffix)) {
-                    icon = QIcon(":/images/icons/fileImg.png");
-                } else if (QStringList{"bin", "o", "exe", "dll", "so"}.contains(suffix)) {
-                    icon = QIcon(":/images/icons/fileBin.png");
-                } else {
-                    icon = QIcon(":/images/icons/fileText.png");
-                }
-            }
-            return icon.pixmap(16, 16);  // Avoid selection-based tinting
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        painter->save();
+
+        if (opt.state & QStyle::State_Selected) {
+            painter->fillRect(opt.rect, QColor(77, 120, 204, 255));
+            painter->setPen(opt.palette.highlightedText().color());
+        } else {
+            painter->fillRect(opt.rect, QColor(33, 37, 43, 255));
+            painter->setPen(opt.palette.text().color());
         }
-        return QFileSystemModel::data(index, role);
+
+        QString text = index.data(Qt::DisplayRole).toString();
+        QRect textRect = opt.rect.adjusted(20, 0, 0, 0);
+        painter->drawText(textRect, Qt::AlignVCenter | Qt::TextSingleLine, text);
+
+        QIcon icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
+        if (!icon.isNull()) {
+            QPixmap pixmap = icon.pixmap(opt.decorationSize);
+            painter->drawPixmap(opt.rect.left() + 2, opt.rect.top() + (opt.rect.height() - opt.decorationSize.height()) / 2, pixmap);
+        }
+
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        QSize size = QStyledItemDelegate::sizeHint(option, index);
+        size.setWidth(size.width() + 20);
+        return size;
     }
 };
 
@@ -44,13 +59,14 @@ class FileSidebarWidget : public QWidget {
 
 public:
     explicit FileSidebarWidget(QWidget *parent = nullptr) : QWidget(parent) {
-        fileModel = new CustomFileSystemModel(this);
+        fileModel = new QFileSystemModel(this);
         fileModel->setRootPath(QDir::currentPath());
         fileModel->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
 
         treeView = new QTreeView(this);
         treeView->setModel(fileModel);
         treeView->setRootIndex(fileModel->index(QDir::currentPath()));
+        treeView->setItemDelegate(new NoTintIconDelegate(this));
 
         treeView->setHeaderHidden(true);
         treeView->setColumnHidden(1, true);
@@ -98,7 +114,7 @@ private slots:
 
 private:
     QTreeView *treeView;
-    CustomFileSystemModel *fileModel;
+    QFileSystemModel *fileModel;
 };
 
 #endif // FILESIDEBARWIDGET_H

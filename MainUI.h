@@ -27,6 +27,7 @@
 #include <QFileInfo>
 #include <QWebEngineView>
 #include <QWebChannel>
+#include <QLabel>
 
 #include <qtermwidget.h>
 #include "BridgeManager.h"
@@ -88,6 +89,7 @@ private:
         QWidget *window = new QWidget;
 
         QVBoxLayout *layout = new QVBoxLayout(window);
+        QVBoxLayout *layout2 = new QVBoxLayout;
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
 
@@ -100,11 +102,22 @@ private:
         QSplitter *splitterVert = new QSplitter(Qt::Vertical);
 
         sidebar = new FileSidebarWidget;
+        QWidget *sideWidget = new QWidget;
+
+        QLabel *nameEdit = new QLabel;
+        nameEdit->setText("LyraIDE");
+        nameEdit->setAlignment(Qt::AlignCenter);
+        nameEdit->setFixedHeight(size().height() / 40);
+
+        layout2->addWidget(nameEdit);
+        layout2->addWidget(sidebar);
+
+        sideWidget->setLayout(layout2);
 
         splitterVert->addWidget(view);
         splitterVert->addWidget(terminal);
 
-        splitterHoriz->addWidget(sidebar);
+        splitterHoriz->addWidget(sideWidget);
         splitterHoriz->addWidget(splitterVert);
 
         splitterHoriz->setHandleWidth(1);
@@ -115,6 +128,7 @@ private:
 
         splitterHoriz->setContentsMargins(0, 0, 0, 0);
         splitterVert->setContentsMargins(0, 0, 0, 0);
+        layout2->setContentsMargins(0, 0, 0, 0);
 
         splitterHoriz->setSizes({size().width() / 6, 5 * size().width() / 6});
         splitterVert->setSizes({5 * size().height() / 6, size().height() / 6});
@@ -125,6 +139,7 @@ private:
         statusBar = new QStatusBar;
         setStatusBar(statusBar);
         statusBar->showMessage("Ready");
+        statusBar->setFixedHeight(size().height() / 40);
 
         createMenu();
         connectItems();
