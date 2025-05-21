@@ -65,9 +65,31 @@ public:
                 border-top: 1px solid #181a1f;
             }
 
-            /* QMenu item pressed (applies only when the item is pressed) */
             QMenu::item:selected {
                 background-color: #0e63bd;
+            }
+            QMenuBar::item {
+                padding: 4px 7px;
+                margin: 0px;
+                min-height: 15px;
+                border: none;
+                text-align: left;
+            }
+            QMenuBar::item:hover, QMenuBar::item:pressed, QMenuBar::item:selected {
+                padding: 4px 7px;
+                margin: 0px;
+                min-height: 15px;
+                border: none;
+                background-color: #4d4f50;
+                border-radius: 5px;
+                color: white;
+            }
+            QMenuBar {
+                background-color: #3b3e3f;
+                padding: 0px;
+                margin: 0px;
+                text-align: left;
+                spacing: 0px;
             }
         )");
     }
@@ -77,6 +99,7 @@ public:
 
 private:
     QMenu *fileMenu;
+    QMenu *fileEdit;
     QAction *openAction;
     QAction *saveAction;
     QWebEngineView *view;
@@ -157,9 +180,13 @@ private:
 
     void createMenu() {
         fileMenu = menuBar()->addMenu("&File");
+        fileEdit = menuBar()->addMenu("&Edit");
 
         openAction = new QAction("&Open", this);
         saveAction = new QAction("&Save", this);
+
+        openAction->setIcon(style()->standardIcon(QStyle::SP_FileIcon));
+        saveAction->setIcon(style()->standardIcon(QStyle::SP_DriveHDIcon));
 
         fileMenu->addAction(openAction);
         fileMenu->addAction(saveAction);
