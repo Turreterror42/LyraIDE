@@ -100,7 +100,7 @@ public:
         layout->addWidget(treeView);
         setLayout(layout);
 
-        connect(treeView, &QTreeView::doubleClicked, this, &FileSidebarWidget::onFileSelected);
+        QObject::connect(treeView, &QTreeView::doubleClicked, this, &FileSidebarWidget::onFileSelected);
     }
 
 signals:

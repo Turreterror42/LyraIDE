@@ -33,274 +33,217 @@
 #include "BridgeManager.h"
 #include "FileSidebarWidget.h"
 
+class EditorTab : public QWidget {
+    Q_OBJECT
+
+public:
+    QWebEngineView *view;
+    BridgeManager *bridgeManager;
+    QString filePath;
+
+    EditorTab(QWidget *parent = nullptr) : QWidget(parent) {
+        view = new QWebEngineView;
+        view->setUrl(QUrl("qrc:///web/monaco.html"));
+        bridgeManager = new BridgeManager(view);
+        QObject::connect(view, &QWebEngineView::loadFinished, this, [this](bool ok) {
+            if (ok) {
+                if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+                    bridgeManager->setTheme("vs-dark");
+                else
+                    bridgeManager->setTheme("vs");
+            }
+        });
+
+        QVBoxLayout *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(view);
+        setLayout(layout);
+    }
+};
+
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
     MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
-        initMonaco();
-        setStyleSheet(R"(
-            /* Main Window */
-            QMainWindow {
-                background-color: #21252b;
-                color: #abb2bf;
-                font-family: 'Source Code Pro';
-            }
-
-            /* Splitter */
-            QSplitter {
-                margin: 0;
-            }
-            QSplitter::handle {
-                background-color: #181a1f;
-            }
-            QSplitter::handle:horizontal {
-                width: 1px;
-            }
-            QSplitter::handle:vertical {
-                height: 1px;
-            }
-
-            QStatusBar {
-                border-top: 1px solid #181a1f;
-            }
-
-            QMenu::item:selected {
-                background-color: #0e63bd;
-            }
-            QMenuBar::item {
-                padding: 4px 7px;
-                margin: 0px;
-                min-height: 15px;
-                border: none;
-                text-align: left;
-            }
-            QMenuBar::item:hover, QMenuBar::item:pressed, QMenuBar::item:selected {
-                padding: 4px 7px;
-                margin: 0px;
-                min-height: 15px;
-                border: none;
-                background-color: #4d4f50;
-                border-radius: 5px;
-                color: white;
-            }
-            QMenuBar {
-                background-color: #3b3e3f;
-                padding: 0px;
-                margin: 0px;
-                text-align: left;
-                spacing: 0px;
-            }
-        )");
+        setWindowTitle("LyraIDE");
+        setWindowIcon(QIcon(":/images/icons/icon.ico"));
+        initUI();
+        setStyle();
     }
+
     ~MainWindow() {
         qDebug() << "Good Bye";
     }
 
 private:
     QMenu *fileMenu;
-    QMenu *fileEdit;
     QAction *openAction;
     QAction *saveAction;
-    QWebEngineView *view;
-    BridgeManager *bridgeManager;
+    QAction *saveAsAction;
+    QAction *quitAction;
+    QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
     QStatusBar *statusBar;
     QMap<QString, QString> extensionToLanguageMap;
+    QTermWidget *terminal;
 
-    void setupUI() {
-        QWidget *window = new QWidget;
+    void initUI() {
+        QWidget *central = new QWidget;
+        QVBoxLayout *mainLayout = new QVBoxLayout(central);
+        mainLayout->setContentsMargins(0, 0, 0, 0);
 
-        QVBoxLayout *layout = new QVBoxLayout(window);
-        QVBoxLayout *layout2 = new QVBoxLayout;
-        layout->setContentsMargins(0, 0, 0, 0);
-        layout->setSpacing(0);
+        QSplitter *horizSplitter = new QSplitter(Qt::Horizontal);
+        QSplitter *vertSplitter = new QSplitter(Qt::Vertical);
 
-        QTermWidget *terminal = new QTermWidget;
+        sidebar = new FileSidebarWidget;
+        QVBoxLayout *sideLayout = new QVBoxLayout;
+        QLabel *nameEdit = new QLabel("LyraIDE");
+        nameEdit->setAlignment(Qt::AlignCenter);
+        nameEdit->setFixedHeight(size().height() / 40);
+        sideLayout->addWidget(nameEdit);
+        sideLayout->addWidget(sidebar);
+        QWidget *sidePanel = new QWidget;
+        sidePanel->setLayout(sideLayout);
+
+        tabWidget = new QTabWidget;
+        tabWidget->setTabsClosable(true);
+
+        terminal = new QTermWidget;
         terminal->setShellProgram("/bin/bash");
         terminal->setScrollBarPosition(QTermWidget::ScrollBarRight);
         terminal->setMinimumHeight(size().height() / 8);
 
-        QSplitter *splitterHoriz = new QSplitter(Qt::Horizontal);
-        QSplitter *splitterVert = new QSplitter(Qt::Vertical);
+        vertSplitter->addWidget(tabWidget);
+        vertSplitter->addWidget(terminal);
+        horizSplitter->addWidget(sidePanel);
+        horizSplitter->addWidget(vertSplitter);
 
-        sidebar = new FileSidebarWidget;
-        QWidget *sideWidget = new QWidget;
+        horizSplitter->setSizes({size().width() / 6, 5 * size().width() / 6});
+        vertSplitter->setSizes({5 * size().height() / 6, size().height() / 6});
 
-        QLabel *nameEdit = new QLabel;
-        nameEdit->setText("LyraIDE");
-        nameEdit->setAlignment(Qt::AlignCenter);
-        nameEdit->setFixedHeight(size().height() / 40);
+        mainLayout->addWidget(horizSplitter);
+        setCentralWidget(central);
 
-        layout2->addWidget(nameEdit);
-        layout2->addWidget(sidebar);
-
-        sideWidget->setLayout(layout2);
-
-        splitterVert->addWidget(view);
-        splitterVert->addWidget(terminal);
-
-        splitterHoriz->addWidget(sideWidget);
-        splitterHoriz->addWidget(splitterVert);
-
-        splitterHoriz->setHandleWidth(1);
-        splitterVert->setHandleWidth(1);
-
-        splitterHoriz->setOpaqueResize(true);
-        splitterVert->setOpaqueResize(true);
-
-        splitterHoriz->setContentsMargins(0, 0, 0, 0);
-        splitterVert->setContentsMargins(0, 0, 0, 0);
-        layout2->setContentsMargins(0, 0, 0, 0);
-
-        splitterHoriz->setSizes({size().width() / 6, 5 * size().width() / 6});
-        splitterVert->setSizes({5 * size().height() / 6, size().height() / 6});
-
-        layout->addWidget(splitterHoriz);
-        setCentralWidget(window);
+        createMenu();
+        connectActions();
 
         statusBar = new QStatusBar;
         setStatusBar(statusBar);
         statusBar->showMessage("Ready");
-        statusBar->setFixedHeight(size().height() / 40);
 
-        createMenu();
-        connectItems();
-        setWindowIcon(QIcon(":/images/icons/icon.ico"));
         initializeExtensionMap();
-
-        if (isDarkMode()) {
-            terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
-            bridgeManager->setTheme("vs-dark");
-        } else {
-            terminal->setColorScheme(":/ColorSchemes/Light.colorscheme");
-            bridgeManager->setTheme("vs-light");
-        }
     }
 
     void createMenu() {
         fileMenu = menuBar()->addMenu("&File");
-        fileEdit = menuBar()->addMenu("&Edit");
 
-        openAction = new QAction("&Open", this);
-        saveAction = new QAction("&Save", this);
+        openAction = new QAction("Open", this);
+        saveAction = new QAction("Save", this);
+        saveAsAction = new QAction("Save As...", this);
+        quitAction = new QAction("Quit", this);
 
-        openAction->setIcon(style()->standardIcon(QStyle::SP_FileIcon));
-        saveAction->setIcon(style()->standardIcon(QStyle::SP_DriveHDIcon));
+        openAction->setShortcut(QKeySequence("Ctrl+O"));
+        saveAction->setShortcut(QKeySequence("Ctrl+S"));
+        saveAsAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
+        quitAction->setShortcut(QKeySequence("Ctrl+Q"));
 
         fileMenu->addAction(openAction);
         fileMenu->addAction(saveAction);
+        fileMenu->addAction(saveAsAction);
+        fileMenu->addAction(quitAction);
     }
 
-    void connectItems() {
+    void connectActions() {
         QObject::connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
         QObject::connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+        QObject::connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
+        QObject::connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
         QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
-    }
-
-    bool isDarkMode() {
-        const auto scheme = QGuiApplication::styleHints()->colorScheme();
-        return scheme == Qt::ColorScheme::Dark;
-    }
-
-    void initMonaco() {
-        view = new QWebEngineView;
-        view->setUrl(QUrl("qrc:///web/monaco.html"));
-        bridgeManager = new BridgeManager(view);
-
-        connect(view, &QWebEngineView::loadFinished, this, [this]() {
-            qDebug() << "Monaco loaded. Sending initialization message.";
-            setupUI();
-        });
+        QObject::connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     }
 
     void initializeExtensionMap() {
         extensionToLanguageMap = {
-            {"abap", "abap"}, {"apex", "apex"}, {"azcli", "azcli"},
-            {"bat", "bat"}, {"bicep", "bicep"},
-            {"c", "cpp"}, {"cpp", "cpp"}, {"cxx", "cpp"}, {"cc", "cpp"},
-            {"cs", "csharp"}, {"css", "css"}, {"coffee", "coffeescript"},
-            {"cmake", "cmake"}, {"clj", "clojure"}, {"cljs", "clojure"},
-            {"cljc", "clojure"}, {"csp", "csp"}, {"cypher", "cypher"},
-            {"dart", "dart"}, {"dockerfile", "dockerfile"},
-            {"ex", "elixir"}, {"exs", "elixir"}, {"ecl", "ecl"},
-            {"fs", "fsharp"}, {"fsi", "fsharp"}, {"fsx", "fsharp"},
-            {"fsscript", "fsharp"}, {"ftl", "freemarker2"}, {"flow", "flow9"},
-            {"go", "go"}, {"graphql", "graphql"}, {"gql", "graphql"},
-            {"h", "cpp"}, {"hpp", "cpp"}, {"hxx", "cpp"},
-            {"html", "html"}, {"htm", "html"}, {"hcl", "hcl"},
-            {"hbs", "handlebars"}, {"ini", "ini"},
-            {"java", "java"}, {"js", "javascript"}, {"jsx", "javascript"},
-            {"json", "json"}, {"jl", "julia"},
-            {"kt", "kotlin"}, {"kts", "kotlin"},
-            {"less", "less"}, {"lua", "lua"}, {"l", "lexon"},
-            {"ligo", "pascaligo"}, {"liquid", "liquid"},
-            {"md", "markdown"}, {"mdx", "mdx"}, {"mips", "mips"},
-            {"m3", "m3"}, {"cm3", "m3"}, {"m3i", "m3"},
-            {"msdax", "msdax"}, {"m", "objective-c"}, {"mligo", "cameligo"},
-            {"mysql", "mysql"},
-            {"pas", "pascal"}, {"pp", "pascal"}, {"php", "php"},
-            {"pl", "perl"}, {"pm", "perl"}, {"ps1", "powershell"},
-            {"psm1", "powershell"}, {"py", "python"}, {"pyc", "python"},
-            {"pyw", "python"}, {"pq", "powerquery"}, {"proto", "protobuf"},
-            {"pla", "pla"}, {"pgsql", "pgsql"}, {"pug", "pug"},
-            {"pats", "postiats"}, {"qs", "qsharp"},
-            {"r", "r"}, {"rb", "ruby"}, {"rs", "rust"},
-            {"rst", "restructuredtext"}, {"cshtml", "razor"},
-            {"redis", "redis"}, {"redshift", "redshift"},
-            {"scss", "scss"}, {"sh", "shell"}, {"bash", "shell"},
-            {"sql", "sql"}, {"swift", "swift"}, {"sol", "solidity"},
-            {"st", "st"}, {"sv", "systemverilog"}, {"svh", "systemverilog"},
-            {"scala", "scala"}, {"sc", "scala"}, {"scm", "scheme"},
-            {"ss", "scheme"}, {"sb", "sb"}, {"sparql", "sparql"},
-            {"sophia", "sophia"},
-            {"ts", "typescript"}, {"tsx", "typescript"}, {"tcl", "tcl"},
-            {"twig", "twig"}, {"tsp", "typespec"},
-            {"vb", "vb"}, {"v", "systemverilog"}, {"wgsl", "wgsl"},
-            {"xml", "xml"}, {"yaml", "yaml"}, {"yml", "yaml"}
+            {"cpp", "cpp"}, {"h", "cpp"}, {"py", "python"},
+            {"js", "javascript"}, {"ts", "typescript"}, {"html", "html"},
+            {"css", "css"}, {"json", "json"}, {"java", "java"},
+            {"cs", "csharp"}, {"xml", "xml"}, {"sql", "sql"},
+            {"sh", "shell"}, {"rb", "ruby"}, {"php", "php"},
+            {"go", "go"}, {"rs", "rust"}, {"swift", "swift"},
+            {"md", "markdown"}, {"yml", "yaml"}, {"yaml", "yaml"}
         };
     }
 
-    void setLanguageOfFile(const QString &fileNameOfExtension) {
-        QFileInfo fileInfo(fileNameOfExtension);
-        QString extension = fileInfo.suffix().toLower();
-        QString language = extensionToLanguageMap.value(extension, "plaintext");
+    void setLanguage(EditorTab *tab, const QString &filePath) {
+        QFileInfo info(filePath);
+        QString ext = info.suffix().toLower();
+        QString lang = extensionToLanguageMap.value(ext, "plaintext");
 
-        if (!language.isEmpty()) bridgeManager->setLanguage(language);
-        statusBar->showMessage(QString("Editing: %1 | Language: %2").arg(fileInfo.fileName(), language));
-
-        setWindowTitle(QString("LyraIDE - %1").arg(fileInfo.fileName()));
+        tab->bridgeManager->setLanguage(lang);
+        tab->filePath = filePath;
+        tabWidget->setTabText(tabWidget->indexOf(tab), info.fileName());
+        statusBar->showMessage(QString("Editing: %1 | Language: %2").arg(info.fileName(), lang));
     }
 
-private slots:
-    void openFromPath(const QString &filePath) {
-        if (filePath.isEmpty()) return;
-        bridgeManager->loadText(filePath);
-        setLanguageOfFile(filePath);
+    void setStyle() {
+        setStyleSheet(R"(
+            QMainWindow { background-color: #21252b; color: #abb2bf; font-family: 'Source Code Pro'; }
+            QSplitter::handle { background-color: #181a1f; }
+            QSplitter::handle:horizontal { width: 1px; }
+            QSplitter::handle:vertical { height: 1px; }
+            QStatusBar { border-top: 1px solid #181a1f; }
+            QMenu::item:selected { background-color: #0e63bd; }
+            QMenuBar::item { padding: 4px 7px; margin: 0px; min-height: 15px; border: none; }
+            QMenuBar::item:hover, QMenuBar::item:pressed, QMenuBar::item:selected { padding: 4px 7px; margin: 0px; min-height: 15px; border: none; background-color: #4d4f50; border-radius: 5px; color: white; }
+            QMenuBar { background-color: #3b3e3f; padding: 0px; margin: 0px; text-align: left; spacing: 0px; }
+            QMenuBar::item:hover { background-color: #4d4f50; color: white; }
+            QTabWidget::pane { border: 1px solid #2e2e2e; top: -1px; }
+            QTabBar::tab { background: #3b3e3f; color: #abb2bf; padding: 5px; border: 1px solid #2e2e2e; border-bottom: none; }
+            QTabBar::tab:selected { background: #1f1f1f; color: white; }
+        )");
+
+        if (isDarkMode()) terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
+        else terminal->setColorScheme(":/ColorSchemes/Light.colorscheme");
     }
 
-    void openFile() {
-        QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("All Files (*);;Text Files (*.txt);;C++ Files (*.cpp *.h)"));
-        if (fileName.isEmpty()) return;
-        bridgeManager->loadText(fileName);
-        setLanguageOfFile(fileName);
+    bool isDarkMode() {
+        return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
     }
 
-    void saveFile() {
-        QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), "", tr("All Files (*);;Text Files (*.txt);;C++ Files (*.cpp *.h)"));
-        if (fileName.isEmpty()) return;
+    EditorTab* createEditorTab(const QString &filePath = QString()) {
+        EditorTab *tab = new EditorTab;
 
+        QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [=](bool ok) {
+            if (ok && !filePath.isEmpty()) {
+                tab->bridgeManager->loadText(filePath);
+                setLanguage(tab, filePath);
+            }
+        });
+
+        tabWidget->addTab(tab, filePath.isEmpty() ? "Untitled" : QFileInfo(filePath).fileName());
+        tabWidget->setCurrentWidget(tab);
+        return tab;
+    }
+
+    EditorTab* currentEditor() const {
+        return qobject_cast<EditorTab*>(tabWidget->currentWidget());
+    }
+
+    void writeToFile(EditorTab *tab, const QString &filePath) {
         QString content;
         QEventLoop loop;
-        connect(bridgeManager, &BridgeManager::textRetrieved, this, [&content, &loop](const QString &text) {
+
+        QObject::connect(tab->bridgeManager, &BridgeManager::textRetrieved, this, [&](const QString &text) {
             content = text;
             loop.quit();
         });
 
-        bridgeManager->retrieveText();
+        tab->bridgeManager->retrieveText();
         loop.exec();
 
-        QFile file(fileName);
+        QFile file(filePath);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QMessageBox::warning(this, tr("Error"), tr("Cannot save file: ") + file.errorString());
             return;
@@ -309,7 +252,45 @@ private slots:
         QTextStream out(&file);
         out << content;
         file.close();
-        statusBar->showMessage(QString("Saved: %1").arg(fileName));
+
+        tab->filePath = filePath;
+        setLanguage(tab, filePath);
+        statusBar->showMessage("Saved: " + filePath);
+    }
+
+private slots:
+    void openFile() {
+        QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"));
+        if (!fileName.isEmpty()) openFromPath(fileName);
+    }
+
+    void openFromPath(const QString &filePath) {
+        EditorTab *tab = createEditorTab(filePath);
+    }
+
+    void saveFile() {
+        EditorTab *tab = currentEditor();
+        if (!tab) return;
+
+        if (tab->filePath.isEmpty()) {
+            saveFileAs();
+        } else {
+            writeToFile(tab, tab->filePath);
+        }
+    }
+
+    void saveFileAs() {
+        EditorTab *tab = currentEditor();
+        if (!tab) return;
+
+        QString fileName = QFileDialog::getSaveFileName(this, tr("Save File As"));
+        if (!fileName.isEmpty()) writeToFile(tab, fileName);
+    }
+
+    void closeTab(int index) {
+        QWidget *widget = tabWidget->widget(index);
+        if (widget) widget->deleteLater();
+        tabWidget->removeTab(index);
     }
 };
 

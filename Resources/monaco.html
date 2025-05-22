@@ -6,21 +6,18 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.js"></script>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
-        html, body {
+        html, body, #editor {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
         }
-        #editor {
-            width: 100%;
-            height: 100%;
-        }
     </style>
 </head>
 <body>
     <div id="editor"></div>
+
     <script>
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' } });
 
@@ -31,60 +28,42 @@
                 minimap: { enabled: false }
             });
 
-            function resetEditorLayout() {
-                const container = document.getElementById('editor');
-                const rect = container.getBoundingClientRect();
+            window.addEventListener('resize', () => {
+                const rect = document.getElementById('editor').getBoundingClientRect();
                 window.editor.layout({ width: rect.width, height: rect.height });
-            }
+            });
 
-            window.addEventListener('resize', resetEditorLayout);
-            window.triggerEditorLayout = resetEditorLayout;
-
-            // Set up the QWebChannel communication
+            // Wait for the QWebChannel to initialize
             new QWebChannel(qt.webChannelTransport, function (channel) {
-            // Access the C++ BridgeManager object
-            window.bridge = channel.objects.bridge;
+                window.bridge = channel.objects.bridge;
 
-            // Example of calling C++ function from JavaScript (loadText)
-            window.bridge.loadText = function(text) {
-                try {
+                // These methods are now accessible via bridge.callXYZ from C++ using runJavaScript()
+                window.setEditorText = function (text) {
                     if (window.editor) {
-                        console.log("Setting text:", text);  // Log the text to debug
                         window.editor.setValue(text);
-                    } else {
-                        console.error("Editor not initialized.");
                     }
-                } catch (e) {
-                    console.error("Error setting text in Monaco editor:", e);
-                }
-            };
+                };
 
-            window.bridge.setTheme = function(theme) {
-                monaco.editor.setTheme(theme);
-            };
+                window.setEditorTheme = function (theme) {
+                    monaco.editor.setTheme(theme);
+                };
 
-            window.bridge.setLanguage = function(lang) {
-                if (window.editor && window.editor.getModel()) {
-                    monaco.editor.setModelLanguage(window.editor.getModel(), lang);
-                } else {
-                    console.error("Editor or model not ready");
-                }
-            };
+                window.setEditorLanguage = function (lang) {
+                    if (window.editor && window.editor.getModel()) {
+                        monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+                    }
+                };
 
-            window.bridge.retrieveText = function() {
-                // Retrieve the text from Monaco editor via C++
-                window.bridge.retrieveText();
-            };
-        });
+                window.getEditorText = function () {
+                    return window.editor ? window.editor.getValue() : "";
+                };
 
-        // For direct language change (JavaScript calling C++)
-        window.setLanguage = function (lang) {
-            if (window.editor && window.editor.getModel()) {
-                monaco.editor.setModelLanguage(window.editor.getModel(), lang);
-            }
-        };
-
-        resetEditorLayout();  // Initial layout reset
+                window.setEditorReadOnly = function (readonly) {
+                    if (window.editor) {
+                        window.editor.updateOptions({ readOnly: readonly });
+                    }
+                };
+            });
         });
     </script>
 </body>

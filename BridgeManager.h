@@ -72,34 +72,31 @@ public slots:
                 }
             }
 
-            QString sanitizedContent = QString("%1").arg(fileData);
-            sanitizedContent.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
-            const QString js = QString("if (window.editor) window.editor.setValue('%1');").arg(sanitizedContent);
-            m_view->page()->runJavaScript(js);
-
+            QString escapedText = QString::fromUtf8(fileData);
+            escapedText.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
+            m_view->page()->runJavaScript(QString("setEditorText('%1');").arg(escapedText));
         } else {
             qDebug() << "Failed to open file:" << filePath;
-            fileContent = "";
         }
     }
 
     void setTheme(const QString &theme) {
-        const QString js = QString("monaco.editor.setTheme('%1');").arg(theme);
-        m_view->page()->runJavaScript(js);
+        m_view->page()->runJavaScript(QString("setEditorTheme('%1');").arg(theme));
     }
 
     void setLanguage(const QString &language) {
-        const QString js = QString("if (window.setLanguage) setLanguage('%1');").arg(language);
-        m_view->page()->runJavaScript(js);
+        m_view->page()->runJavaScript(QString("setEditorLanguage('%1');").arg(language));
     }
 
     void setReadOnly(const bool YN) {
-        const QString js = QString("if (window.editor) window.editor.updateOptions({ readOnly: %1 });").arg(YN);
-        m_view->page()->runJavaScript(js);
+        m_view->page()->runJavaScript(QString("setEditorReadOnly(%1);").arg(YN));
     }
 
     void retrieveText() {
-        m_view->page()->runJavaScript("window.editor ? window.editor.getValue() : ''", [this](const QVariant &result) {emit textRetrieved(result.toString());});
+        m_view->page()->runJavaScript("getEditorText();", [=](const QVariant &result) {
+            QString text = result.toString();
+            emit textRetrieved(text);  // Emit your custom signal
+        });
     }
 
 private:
