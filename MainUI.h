@@ -43,14 +43,13 @@ public:
 
     EditorTab(QWidget *parent = nullptr) : QWidget(parent) {
         view = new QWebEngineView;
+        view->page()->setBackgroundColor(QColor("#21252b"));
         view->setUrl(QUrl("qrc:///web/monaco.html"));
         bridgeManager = new BridgeManager(view);
         QObject::connect(view, &QWebEngineView::loadFinished, this, [this](bool ok) {
             if (ok) {
-                if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
-                    bridgeManager->setTheme("vs-dark");
-                else
-                    bridgeManager->setTheme("vs");
+                if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark) bridgeManager->setTheme("vs-dark");
+                else bridgeManager->setTheme("vs");
             }
         });
 
@@ -79,10 +78,15 @@ public:
 
 private:
     QMenu *fileMenu;
+    QMenu *fileEdit;
+    QAction *newFileAction;
     QAction *openAction;
     QAction *saveAction;
     QAction *saveAsAction;
     QAction *quitAction;
+    QAction *undoAction;
+    QAction *redoAction;
+    QAction *selectAllAction;
     QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
     QStatusBar *statusBar;
@@ -138,28 +142,63 @@ private:
 
     void createMenu() {
         fileMenu = menuBar()->addMenu("&File");
+        fileEdit = menuBar()->addMenu("&Edit");
 
+        newFileAction = new QAction("New File", this);
         openAction = new QAction("Open", this);
         saveAction = new QAction("Save", this);
         saveAsAction = new QAction("Save As...", this);
         quitAction = new QAction("Quit", this);
 
+        undoAction = new QAction("Undo", this);
+        redoAction = new QAction("Redo", this);
+        selectAllAction = new QAction("Select All", this);
+
+        newFileAction->setShortcut(QKeySequence("Ctrl+N"));
         openAction->setShortcut(QKeySequence("Ctrl+O"));
         saveAction->setShortcut(QKeySequence("Ctrl+S"));
         saveAsAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
         quitAction->setShortcut(QKeySequence("Ctrl+Q"));
 
+        undoAction->setShortcut(QKeySequence("Ctrl+Z"));
+        redoAction->setShortcut(QKeySequence("Ctrl+Shift+Z"));
+        selectAllAction->setShortcut(QKeySequence("Ctrl+A"));
+
+        fileMenu->addAction(newFileAction);
         fileMenu->addAction(openAction);
         fileMenu->addAction(saveAction);
         fileMenu->addAction(saveAsAction);
         fileMenu->addAction(quitAction);
+
+        fileEdit->addAction(undoAction);
+        fileEdit->addAction(redoAction);
+        fileEdit->addAction(selectAllAction);
     }
 
     void connectActions() {
+        QObject::connect(newFileAction, &QAction::triggered, this, [this]() {
+            EditorTab *tab = new EditorTab;
+
+            QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab](bool ok) {
+                if (ok) {
+                    tabWidget->addTab(tab, "Untitled");
+                    tabWidget->setCurrentWidget(tab);
+                } else {
+                    QMessageBox::warning(this, "Load Error", "Failed to load Monaco editor.");
+                    tab->deleteLater();
+                }
+            });
+        });
+
         QObject::connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
         QObject::connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
         QObject::connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
         QObject::connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
+
+        QObject::connect(undoAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("undo"); });
+        QObject::connect(redoAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("redo"); });
+        QObject::connect(selectAllAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("editor.action.selectAll"); });
+
         QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
         QObject::connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     }
@@ -200,8 +239,8 @@ private:
             QMenuBar { background-color: #3b3e3f; padding: 0px; margin: 0px; text-align: left; spacing: 0px; }
             QMenuBar::item:hover { background-color: #4d4f50; color: white; }
             QTabWidget::pane { border: 1px solid #2e2e2e; top: -1px; }
-            QTabBar::tab { background: #3b3e3f; color: #abb2bf; padding: 5px; border: 1px solid #2e2e2e; border-bottom: none; }
-            QTabBar::tab:selected { background: #1f1f1f; color: white; }
+            QTabBar::tab { background: #21252b; color: #66717c; padding: 7px; border: 1px solid #2e2e2e; border-bottom: none; }
+            QTabBar::tab:selected { background: #282c34; color: white; border-left: 2px solid #568af2; padding-left: 6px; background-clip: padding-box; }
         )");
 
         if (isDarkMode()) terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
@@ -216,46 +255,62 @@ private:
         EditorTab *tab = new EditorTab;
 
         QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [=](bool ok) {
-            if (ok && !filePath.isEmpty()) {
+            if (!ok) {
+                QMessageBox::warning(this, "Load Error", "Failed to load the Monaco Editor.");
+                delete tab;
+                return;
+            }
+
+            if (!filePath.isEmpty()) {
                 tab->bridgeManager->loadText(filePath);
                 setLanguage(tab, filePath);
             }
+
+            if (tabWidget->indexOf(tab) >= 0) {
+                QString tabName = filePath.isEmpty() ? "Untitled" : QFileInfo(filePath).fileName();
+                tabWidget->setTabText(tabWidget->indexOf(tab), tabName);
+            }
+
+            tabWidget->setCurrentWidget(tab);
         });
 
-        tabWidget->addTab(tab, filePath.isEmpty() ? "Untitled" : QFileInfo(filePath).fileName());
-        tabWidget->setCurrentWidget(tab);
         return tab;
     }
+
 
     EditorTab* currentEditor() const {
         return qobject_cast<EditorTab*>(tabWidget->currentWidget());
     }
 
     void writeToFile(EditorTab *tab, const QString &filePath) {
-        QString content;
-        QEventLoop loop;
+        connect(tab->bridgeManager, &BridgeManager::textRetrieved, this,
+                [=](const QString &content) {
+                    QFile file(filePath);
+                    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                        QMessageBox::warning(this, tr("Error"), tr("Cannot save file: ") + file.errorString());
+                        return;
+                    }
 
-        QObject::connect(tab->bridgeManager, &BridgeManager::textRetrieved, this, [&](const QString &text) {
-            content = text;
-            loop.quit();
-        });
+                    QTextStream out(&file);
+                    out << content;
+                    file.close();
+
+                    tab->filePath = filePath;
+                    setLanguage(tab, filePath);
+                    statusBar->showMessage("Saved: " + filePath);
+                }, Qt::SingleShotConnection);
 
         tab->bridgeManager->retrieveText();
-        loop.exec();
+    }
 
-        QFile file(filePath);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, tr("Error"), tr("Cannot save file: ") + file.errorString());
-            return;
+    int findOpenTabByPath(const QString &filePath) const {
+        for (int i = 0; i < tabWidget->count(); ++i) {
+            EditorTab *tab = qobject_cast<EditorTab*>(tabWidget->widget(i));
+            if (tab && QFileInfo(tab->filePath) == QFileInfo(filePath)) {
+                return i;
+            }
         }
-
-        QTextStream out(&file);
-        out << content;
-        file.close();
-
-        tab->filePath = filePath;
-        setLanguage(tab, filePath);
-        statusBar->showMessage("Saved: " + filePath);
+        return -1;
     }
 
 private slots:
@@ -265,18 +320,34 @@ private slots:
     }
 
     void openFromPath(const QString &filePath) {
-        EditorTab *tab = createEditorTab(filePath);
-    }
+        int existingIndex = findOpenTabByPath(filePath);
+        if (existingIndex >= 0) {
+            tabWidget->setCurrentIndex(existingIndex);
+            return;
+        }
 
+        EditorTab *tab = new EditorTab;
+
+        QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab, filePath](bool ok) {
+            if (!ok) {
+                QMessageBox::warning(this, "Load Error", "Failed to load the Monaco Editor.");
+                tab->deleteLater();
+                return;
+            }
+
+            tab->bridgeManager->loadText(filePath);
+            setLanguage(tab, filePath);
+
+            tabWidget->addTab(tab, QFileInfo(filePath).fileName());
+            tabWidget->setCurrentWidget(tab);
+        });
+    }
     void saveFile() {
         EditorTab *tab = currentEditor();
         if (!tab) return;
 
-        if (tab->filePath.isEmpty()) {
-            saveFileAs();
-        } else {
-            writeToFile(tab, tab->filePath);
-        }
+        if (tab->filePath.isEmpty()) saveFileAs();
+        else writeToFile(tab, tab->filePath);
     }
 
     void saveFileAs() {

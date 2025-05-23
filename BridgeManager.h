@@ -44,11 +44,20 @@ public slots:
             isBinary = regex.match(fileData).hasMatch();
 
             if (isBinary) {
-                QMessageBox::StandardButton reply;
-                reply = QMessageBox::question(nullptr, "Binary File", "The file appears to be binary. Do you want to open it in hexadecimal format?", QMessageBox::Yes | QMessageBox::No);
+                int reply;
+                QMessageBox msgBox;
+                msgBox.setIcon(QMessageBox::Question);
+                msgBox.setWindowTitle("Binary File");
+                msgBox.setText("The file appears to be binary. Do you want to open it in hexadecimal format?");
+                msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+                msgBox.setDefaultButton(QMessageBox::No);
+
+                msgBox.setWindowFlag(Qt::WindowCloseButtonHint, false);
+                msgBox.setWindowModality(Qt::ApplicationModal);
+
+                reply = msgBox.exec();
 
                 if (reply == QMessageBox::Yes) {
-
                     QString hexContent;
                     int byteCount = 0;
                     setReadOnly(true);
@@ -65,7 +74,6 @@ public slots:
                     }
 
                     if (hexContent.endsWith(" ")) hexContent.chop(1);
-
                     fileData = hexContent.toUtf8();
                 } else {
                     qDebug() << "User chose not to open the binary file.";
@@ -95,8 +103,12 @@ public slots:
     void retrieveText() {
         m_view->page()->runJavaScript("getEditorText();", [=](const QVariant &result) {
             QString text = result.toString();
-            emit textRetrieved(text);  // Emit your custom signal
+            emit textRetrieved(text);
         });
+    }
+
+    void executeCommand(const QString &command) {
+        m_view->page()->runJavaScript(QString("editor.trigger('', '%1', {});").arg(command));
     }
 
 private:
