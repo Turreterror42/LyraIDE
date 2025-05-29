@@ -28,6 +28,11 @@
 #include <QWebEngineView>
 #include <QWebChannel>
 #include <QLabel>
+#include <QWebEngineProfile>
+#include <QWebEngineSettings>
+#include <QHttpServer>
+#include <QTcpServer>
+#include <QDir>
 
 #include <qtermwidget.h>
 #include "BridgeManager.h"
@@ -41,15 +46,35 @@ public:
     BridgeManager *bridgeManager;
     QString filePath;
 
-    EditorTab(QWidget *parent = nullptr) : QWidget(parent) {
+    EditorTab(QTcpServer* server, QWidget *parent = nullptr) : QWidget(parent) {
         view = new QWebEngineView;
-        view->page()->setBackgroundColor(QColor("#21252b"));
-        view->setUrl(QUrl("qrc:///web/monaco.html"));
+
+        QWebEngineProfile *profile = new QWebEngineProfile(this);
+        profile->setHttpCacheMaximumSize(5 * 1024 * 1024);
+        QWebEnginePage* page = new QWebEnginePage(profile, this);
+        view->setPage(page);
+
+        QWebEngineSettings *settings = view->settings();
+        settings->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
+        settings->setAttribute(QWebEngineSettings::PluginsEnabled, false);
+        settings->setAttribute(QWebEngineSettings::LocalStorageEnabled, false);
+        settings->setAttribute(QWebEngineSettings::WebGLEnabled, false);
+        settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, false);
+        settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, false);
+
+        view->page()->setBackgroundColor(QColor(33, 37, 43, 255));
+
+        QString urlString = QString("http://127.0.0.1:%1").arg(server->serverPort());
+        view->setUrl(QUrl(urlString));
+
         bridgeManager = new BridgeManager(view);
+
         QObject::connect(view, &QWebEngineView::loadFinished, this, [this](bool ok) {
             if (ok) {
-                if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark) bridgeManager->setTheme("vs-dark");
-                else bridgeManager->setTheme("vs");
+                if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+                    bridgeManager->setTheme("vs-dark");
+                else
+                    bridgeManager->setTheme("vs");
             }
         });
 
@@ -61,6 +86,7 @@ public:
 };
 
 
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -68,6 +94,7 @@ public:
     MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
         setWindowTitle("LyraIDE");
         setWindowIcon(QIcon(":/images/icons/icon.ico"));
+        launchHttpServer();
         initUI();
         setStyle();
     }
@@ -79,6 +106,7 @@ public:
 private:
     QMenu *fileMenu;
     QMenu *fileEdit;
+    QMenu *fileHelp;
     QAction *newFileAction;
     QAction *openAction;
     QAction *saveAction;
@@ -87,6 +115,9 @@ private:
     QAction *undoAction;
     QAction *redoAction;
     QAction *selectAllAction;
+    QAction *aboutQt;
+    QHttpServer server;
+    QTcpServer *tcpServer;
     QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
     QStatusBar *statusBar;
@@ -143,6 +174,7 @@ private:
     void createMenu() {
         fileMenu = menuBar()->addMenu("&File");
         fileEdit = menuBar()->addMenu("&Edit");
+        fileHelp = menuBar()->addMenu("&Help");
 
         newFileAction = new QAction("New File", this);
         openAction = new QAction("Open", this);
@@ -153,6 +185,8 @@ private:
         undoAction = new QAction("Undo", this);
         redoAction = new QAction("Redo", this);
         selectAllAction = new QAction("Select All", this);
+
+        aboutQt = new QAction("About Qt", this);
 
         newFileAction->setShortcut(QKeySequence("Ctrl+N"));
         openAction->setShortcut(QKeySequence("Ctrl+O"));
@@ -173,11 +207,35 @@ private:
         fileEdit->addAction(undoAction);
         fileEdit->addAction(redoAction);
         fileEdit->addAction(selectAllAction);
+
+        fileHelp->addAction(aboutQt);
+    }
+
+    void launchHttpServer() {
+        server.route("/", []() {
+            const QString filePath = QDir::current().filePath(":/web/monaco.html");
+            QFile file(filePath);
+
+            if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return QHttpServerResponse("text/plain", "Error: index.html not found");
+
+            QByteArray content = file.readAll();
+            return QHttpServerResponse("text/html", content);
+        });
+
+        tcpServer = new QTcpServer();
+        if (!tcpServer->listen() || !server.bind(tcpServer)) {
+            qCritical() << "Failed to bind server";
+            delete tcpServer;
+            return;
+        }
+
+        qDebug() << "Listening on port" << tcpServer->serverPort();
+
     }
 
     void connectActions() {
         QObject::connect(newFileAction, &QAction::triggered, this, [this]() {
-            EditorTab *tab = new EditorTab;
+            EditorTab *tab = new EditorTab(tcpServer);
 
             QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab](bool ok) {
                 if (ok) {
@@ -198,6 +256,8 @@ private:
         QObject::connect(undoAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("undo"); });
         QObject::connect(redoAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("redo"); });
         QObject::connect(selectAllAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("editor.action.selectAll"); });
+
+        QObject::connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
 
         QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
         QObject::connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
@@ -252,7 +312,7 @@ private:
     }
 
     EditorTab* createEditorTab(const QString &filePath = QString()) {
-        EditorTab *tab = new EditorTab;
+        EditorTab *tab = new EditorTab(tcpServer);
 
         QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [=](bool ok) {
             if (!ok) {
@@ -326,7 +386,7 @@ private slots:
             return;
         }
 
-        EditorTab *tab = new EditorTab;
+        EditorTab *tab = new EditorTab(tcpServer);
 
         QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab, filePath](bool ok) {
             if (!ok) {

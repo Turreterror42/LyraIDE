@@ -32,7 +32,6 @@ signals:
 public slots:
     void loadText(const QString &filePath) {
         QFile file(filePath);
-        QString fileContent;
         bool isBinary = false;
 
         if (file.open(QIODevice::ReadOnly)) {
@@ -86,6 +85,12 @@ public slots:
         } else {
             qDebug() << "Failed to open file:" << filePath;
         }
+    }
+
+    void setContent(const QString &content) {
+        QString escapedText = content;
+        escapedText.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
+        m_view->page()->runJavaScript(QString("setEditorText('%1');").arg(escapedText));
     }
 
     void setTheme(const QString &theme) {
