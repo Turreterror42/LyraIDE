@@ -77,24 +77,6 @@ public:
         treeView->setSortingEnabled(false);
         treeView->setFocusPolicy(Qt::NoFocus);
 
-        treeView->setStyleSheet(
-            "QTreeView {"
-            "    background-color: #21252b;"
-            "    border: none;"
-            "    color: #d3d3d3;"
-            "}"
-            "QTreeView::item {"
-            "    padding: 2px;"
-            "    color: #d3d3d3;"
-            "    border: none;"
-            "    outline: none;"
-            "}"
-            "QTreeView::item:selected {"
-            "    background-color: #4d78cc;"
-            "    color: white;"
-            "}"
-            );
-
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(treeView);

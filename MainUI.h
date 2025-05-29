@@ -46,7 +46,7 @@ public:
     BridgeManager *bridgeManager;
     QString filePath;
 
-    EditorTab(QTcpServer* server, QWidget *parent = nullptr) : QWidget(parent) {
+    EditorTab(bool theme, QTcpServer* server, QWidget *parent = nullptr) : QWidget(parent) {
         view = new QWebEngineView;
 
         QWebEngineProfile *profile = new QWebEngineProfile(this);
@@ -62,7 +62,7 @@ public:
         settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, false);
         settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, false);
 
-        view->page()->setBackgroundColor(QColor(33, 37, 43, 255));
+        if(theme) view->page()->setBackgroundColor(QColor(33, 37, 43, 255));
 
         QString urlString = QString("http://127.0.0.1:%1").arg(server->serverPort());
         view->setUrl(QUrl(urlString));
@@ -70,12 +70,7 @@ public:
         bridgeManager = new BridgeManager(view);
 
         QObject::connect(view, &QWebEngineView::loadFinished, this, [this](bool ok) {
-            if (ok) {
-                if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
-                    bridgeManager->setTheme("vs-dark");
-                else
-                    bridgeManager->setTheme("vs");
-            }
+            if (ok) bridgeManager->setTheme("vs-dark");
         });
 
         QVBoxLayout *layout = new QVBoxLayout(this);
@@ -235,7 +230,7 @@ private:
 
     void connectActions() {
         QObject::connect(newFileAction, &QAction::triggered, this, [this]() {
-            EditorTab *tab = new EditorTab(tcpServer);
+            EditorTab *tab = new EditorTab(isDarkMode(), tcpServer);
 
             QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab](bool ok) {
                 if (ok) {
@@ -287,24 +282,36 @@ private:
     }
 
     void setStyle() {
-        setStyleSheet(R"(
-            QMainWindow { background-color: #21252b; color: #abb2bf; font-family: 'Source Code Pro'; }
-            QSplitter::handle { background-color: #181a1f; }
-            QSplitter::handle:horizontal { width: 1px; }
-            QSplitter::handle:vertical { height: 1px; }
-            QStatusBar { border-top: 1px solid #181a1f; }
-            QMenu::item:selected { background-color: #0e63bd; }
-            QMenuBar::item { padding: 4px 7px; margin: 0px; min-height: 15px; border: none; }
-            QMenuBar::item:hover, QMenuBar::item:pressed, QMenuBar::item:selected { padding: 4px 7px; margin: 0px; min-height: 15px; border: none; background-color: #4d4f50; border-radius: 5px; color: white; }
-            QMenuBar { background-color: #3b3e3f; padding: 0px; margin: 0px; text-align: left; spacing: 0px; }
-            QMenuBar::item:hover { background-color: #4d4f50; color: white; }
-            QTabWidget::pane { border: 1px solid #2e2e2e; top: -1px; }
-            QTabBar::tab { background: #21252b; color: #66717c; padding: 7px; border: 1px solid #2e2e2e; border-bottom: none; }
-            QTabBar::tab:selected { background: #282c34; color: white; border-left: 2px solid #568af2; padding-left: 6px; background-clip: padding-box; }
-        )");
-
-        if (isDarkMode()) terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
-        else terminal->setColorScheme(":/ColorSchemes/Light.colorscheme");
+        // I will add a light theme later
+        if (isDarkMode() || !isDarkMode()) {
+            terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
+            setStyleSheet(R"(
+                QMainWindow { background-color: #21252b; color: #abb2bf; font-family: 'Source Code Pro'; }
+                QSplitter::handle { background-color: #181a1f; }
+                QSplitter::handle:horizontal { width: 1px; }
+                QSplitter::handle:vertical { height: 1px; }
+                QStatusBar { border-top: 1px solid #181a1f; }
+                QMenu::item:selected { background-color: #0e63bd; }
+                QMenuBar::item { padding: 4px 7px; margin: 0px; min-height: 15px; border: none; }
+                QMenuBar::item:hover, QMenuBar::item:pressed, QMenuBar::item:selected { padding: 4px 7px; margin: 0px; min-height: 15px; border: none; background-color: #4d4f50; border-radius: 5px; color: white; }
+                QMenuBar { background-color: #3b3e3f; padding: 0px; margin: 0px; text-align: left; spacing: 0px; }
+                QMenuBar::item:hover { background-color: #4d4f50; color: white; }
+                QTabWidget::pane { border: 1px solid #2e2e2e; top: -1px; }
+                QTabBar::tab { background: #21252b; color: #66717c; padding: 7px; border: 1px solid #2e2e2e; border-bottom: none; }
+                QTabBar::tab:selected { background: #282c34; color: white; border-left: 2px solid #568af2; padding-left: 6px; background-clip: padding-box; }
+                QScrollBar:vertical { background: transparent; width: 12px; margin: 0px; border-radius: 4px; }
+                QScrollBar::handle:vertical { background: #4f75d6; min-height: 20px; border-radius: 4px; }
+                QScrollBar::handle:vertical:hover { background: #6b8ae6; }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { background: none; height: 0px; }
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+                QStatusBar {color: white;}
+            )");
+            sidebar->setStyleSheet(R"(
+                QTreeView { background-color: #21252b; border: none; color: #d3d3d3; }
+                QTreeView::item { padding: 2px; color: #d3d3d3; border: none; outline: none; }
+                QTreeView::item:selected { background-color: #4d78cc; color: white; }
+            )");
+        }
     }
 
     bool isDarkMode() {
@@ -312,7 +319,7 @@ private:
     }
 
     EditorTab* createEditorTab(const QString &filePath = QString()) {
-        EditorTab *tab = new EditorTab(tcpServer);
+        EditorTab *tab = new EditorTab(isDarkMode(), tcpServer);
 
         QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [=](bool ok) {
             if (!ok) {
@@ -386,7 +393,7 @@ private slots:
             return;
         }
 
-        EditorTab *tab = new EditorTab(tcpServer);
+        EditorTab *tab = new EditorTab(isDarkMode(), tcpServer);
 
         QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab, filePath](bool ok) {
             if (!ok) {
