@@ -11,15 +11,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets HttpServer)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets HttpServer)
-add_subdirectory(libs/qtermwidget)
-
-set(PROJECT_SOURCES
-        main.cpp
-        MainUI.h
-        BridgeManager.h
-        FileSidebarWidget.h
-        Resources/Resources.qrc
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    message("Running on Windows. Not using QTermWidget !")
+    set(PROJECT_SOURCES
+      main.cpp
+      MainUI.h
+      BridgeManager.h
+      FileSidebarWidget.h
+      CMDWidget.h
+      Resources/Resources.qrc
+    )
+else()
+    add_subdirectory(libs/qtermwidget)
+    set(PROJECT_SOURCES
+      main.cpp
+      MainUI.h
+      BridgeManager.h
+      FileSidebarWidget.h
+      Resources/Resources.qrc
+    )
+endif()
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(LyraIDE
@@ -44,8 +55,12 @@ else()
     endif()
 endif()
 
-target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::WebEngineWidgets Qt${QT_VERSION_MAJOR}::HttpServer qtermwidget6)
-target_include_directories(LyraIDE PRIVATE ${CMAKE_SOURCE_DIR}/libs/qtermwidget/lib)
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::WebEngineWidgets Qt${QT_VERSION_MAJOR}::HttpServer)
+else()
+  target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::WebEngineWidgets Qt${QT_VERSION_MAJOR}::HttpServer qtermwidget6)
+  target_include_directories(LyraIDE PRIVATE ${CMAKE_SOURCE_DIR}/libs/qtermwidget/lib)
+endif()
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

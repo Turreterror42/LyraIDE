@@ -34,7 +34,11 @@
 #include <QTcpServer>
 #include <QDir>
 
+#ifndef _WIN32
 #include <qtermwidget.h>
+#else
+#include "CMDWidget.h"
+#endif
 #include "BridgeManager.h"
 #include "FileSidebarWidget.h"
 
@@ -117,7 +121,11 @@ private:
     FileSidebarWidget *sidebar;
     QStatusBar *statusBar;
     QMap<QString, QString> extensionToLanguageMap;
+#ifndef _WIN32
     QTermWidget *terminal;
+#else
+    CMDWidget *terminal;
+#endif
 
     void initUI() {
         QWidget *central = new QWidget;
@@ -140,9 +148,13 @@ private:
         tabWidget = new QTabWidget;
         tabWidget->setTabsClosable(true);
 
+#ifndef _WIN32
         terminal = new QTermWidget;
         terminal->setShellProgram("/bin/bash");
         terminal->setScrollBarPosition(QTermWidget::ScrollBarRight);
+#else
+        terminal = new CMDWidget;
+#endif
         terminal->setMinimumHeight(size().height() / 8);
 
         vertSplitter->addWidget(tabWidget);
@@ -284,7 +296,11 @@ private:
     void setStyle() {
         // I will add a light theme later
         if (isDarkMode() || !isDarkMode()) {
+#ifndef _WIN32
             terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
+#else
+            terminal->setDarkTheme(true);
+#endif
             setStyleSheet(R"(
                 QMainWindow { background-color: #21252b; color: #abb2bf; font-family: 'Source Code Pro'; }
                 QSplitter::handle { background-color: #181a1f; }
