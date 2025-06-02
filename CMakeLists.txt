@@ -9,15 +9,16 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets HttpServer)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets HttpServer)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message("Running on Windows. Not using QTermWidget !")
     set(PROJECT_SOURCES
       main.cpp
       MainUI.h
-      BridgeManager.h
       FileSidebarWidget.h
+      QCodeEditor.h
+      QCodeEditor.cpp
       CMDWidget.h
       Resources/Resources.qrc
     )
@@ -26,8 +27,9 @@ else()
     set(PROJECT_SOURCES
       main.cpp
       MainUI.h
-      BridgeManager.h
       FileSidebarWidget.h
+      QCodeEditor.h
+      QCodeEditor.cpp
       Resources/Resources.qrc
     )
 endif()
@@ -56,9 +58,9 @@ else()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::WebEngineWidgets Qt${QT_VERSION_MAJOR}::HttpServer)
+  target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core)
 else()
-  target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::WebEngineWidgets Qt${QT_VERSION_MAJOR}::HttpServer qtermwidget6)
+  target_link_libraries(LyraIDE PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core qtermwidget6)
   target_include_directories(LyraIDE PRIVATE ${CMAKE_SOURCE_DIR}/libs/qtermwidget/lib)
 endif()
 

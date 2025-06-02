@@ -25,75 +25,40 @@
 #include <QStatusBar>
 #include <QLabel>
 #include <QFileInfo>
-#include <QWebEngineView>
-#include <QWebChannel>
 #include <QLabel>
-#include <QWebEngineProfile>
-#include <QWebEngineSettings>
-#include <QHttpServer>
-#include <QTcpServer>
 #include <QDir>
+#include "QCodeEditor.h"
 
 #ifndef _WIN32
 #include <qtermwidget.h>
 #else
 #include "CMDWidget.h"
 #endif
-#include "BridgeManager.h"
 #include "FileSidebarWidget.h"
 
 class EditorTab : public QWidget {
     Q_OBJECT
 
 public:
-    QWebEngineView *view;
-    BridgeManager *bridgeManager;
     QString filePath;
+    QMonacoEditor *editor;
 
-    EditorTab(bool theme, QTcpServer* server, QWidget *parent = nullptr) : QWidget(parent) {
-        view = new QWebEngineView;
-
-        QWebEngineProfile *profile = new QWebEngineProfile(this);
-        profile->setHttpCacheMaximumSize(5 * 1024 * 1024);
-        QWebEnginePage* page = new QWebEnginePage(profile, this);
-        view->setPage(page);
-
-        QWebEngineSettings *settings = view->settings();
-        settings->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
-        settings->setAttribute(QWebEngineSettings::PluginsEnabled, false);
-        settings->setAttribute(QWebEngineSettings::LocalStorageEnabled, false);
-        settings->setAttribute(QWebEngineSettings::WebGLEnabled, false);
-        settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, false);
-        settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, false);
-
-        if(theme) view->page()->setBackgroundColor(QColor(33, 37, 43, 255));
-
-        QString urlString = QString("http://127.0.0.1:%1").arg(server->serverPort());
-        view->setUrl(QUrl(urlString));
-
-        bridgeManager = new BridgeManager(view);
-
-        QObject::connect(view, &QWebEngineView::loadFinished, this, [this](bool ok) {
-            if (ok) bridgeManager->setTheme("vs-dark");
-        });
-
+    explicit EditorTab(bool theme, QWidget *parent = nullptr) : QWidget(parent) {
+        editor = new QMonacoEditor(this);
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
-        layout->addWidget(view);
+        layout->addWidget(editor);
         setLayout(layout);
     }
 };
-
-
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
+    explicit MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
         setWindowTitle("LyraIDE");
         setWindowIcon(QIcon(":/images/icons/icon.ico"));
-        launchHttpServer();
         initUI();
         setStyle();
     }
@@ -103,24 +68,14 @@ public:
     }
 
 private:
-    QMenu *fileMenu;
-    QMenu *fileEdit;
-    QMenu *fileHelp;
-    QAction *newFileAction;
-    QAction *openAction;
-    QAction *saveAction;
-    QAction *saveAsAction;
-    QAction *quitAction;
-    QAction *undoAction;
-    QAction *redoAction;
-    QAction *selectAllAction;
-    QAction *aboutQt;
-    QHttpServer server;
-    QTcpServer *tcpServer;
+    QMenu *fileMenu, *fileEdit, *fileHelp;
+    QAction *newFileAction, *openAction, *saveAction, *saveAsAction, *quitAction;
+    QAction *undoAction, *redoAction, *selectAllAction, *aboutQt;
     QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
     QStatusBar *statusBar;
     QMap<QString, QString> extensionToLanguageMap;
+
 #ifndef _WIN32
     QTermWidget *terminal;
 #else
@@ -218,56 +173,16 @@ private:
         fileHelp->addAction(aboutQt);
     }
 
-    void launchHttpServer() {
-        server.route("/", []() {
-            const QString filePath = QDir::current().filePath(":/web/monaco.html");
-            QFile file(filePath);
-
-            if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return QHttpServerResponse("text/plain", "Error: index.html not found");
-
-            QByteArray content = file.readAll();
-            return QHttpServerResponse("text/html", content);
-        });
-
-        tcpServer = new QTcpServer();
-        if (!tcpServer->listen() || !server.bind(tcpServer)) {
-            qCritical() << "Failed to bind server";
-            delete tcpServer;
-            return;
-        }
-
-        qDebug() << "Listening on port" << tcpServer->serverPort();
-
-    }
-
     void connectActions() {
-        QObject::connect(newFileAction, &QAction::triggered, this, [this]() {
-            EditorTab *tab = new EditorTab(isDarkMode(), tcpServer);
+        connect(newFileAction, &QAction::triggered, this, &MainWindow::createNewTab);
+        connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
+        connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+        connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
+        connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
 
-            QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab](bool ok) {
-                if (ok) {
-                    tabWidget->addTab(tab, "Untitled");
-                    tabWidget->setCurrentWidget(tab);
-                } else {
-                    QMessageBox::warning(this, "Load Error", "Failed to load Monaco editor.");
-                    tab->deleteLater();
-                }
-            });
-        });
-
-        QObject::connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
-        QObject::connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
-        QObject::connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
-        QObject::connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
-
-        QObject::connect(undoAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("undo"); });
-        QObject::connect(redoAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("redo"); });
-        QObject::connect(selectAllAction, &QAction::triggered, this, [this]() { if (EditorTab *tab = currentEditor()) tab->bridgeManager->executeCommand("editor.action.selectAll"); });
-
-        QObject::connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
-
-        QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
-        QObject::connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
+        connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
+        connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
+        connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     }
 
     void initializeExtensionMap() {
@@ -287,7 +202,6 @@ private:
         QString ext = info.suffix().toLower();
         QString lang = extensionToLanguageMap.value(ext, "plaintext");
 
-        tab->bridgeManager->setLanguage(lang);
         tab->filePath = filePath;
         tabWidget->setTabText(tabWidget->indexOf(tab), info.fileName());
         statusBar->showMessage(QString("Editing: %1 | Language: %2").arg(info.fileName(), lang));
@@ -334,72 +248,77 @@ private:
         return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
     }
 
-    EditorTab* createEditorTab(const QString &filePath = QString()) {
-        EditorTab *tab = new EditorTab(isDarkMode(), tcpServer);
-
-        QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [=](bool ok) {
-            if (!ok) {
-                QMessageBox::warning(this, "Load Error", "Failed to load the Monaco Editor.");
-                delete tab;
-                return;
-            }
-
-            if (!filePath.isEmpty()) {
-                tab->bridgeManager->loadText(filePath);
-                setLanguage(tab, filePath);
-            }
-
-            if (tabWidget->indexOf(tab) >= 0) {
-                QString tabName = filePath.isEmpty() ? "Untitled" : QFileInfo(filePath).fileName();
-                tabWidget->setTabText(tabWidget->indexOf(tab), tabName);
-            }
-
-            tabWidget->setCurrentWidget(tab);
-        });
-
-        return tab;
-    }
-
-
-    EditorTab* currentEditor() const {
-        return qobject_cast<EditorTab*>(tabWidget->currentWidget());
-    }
-
-    void writeToFile(EditorTab *tab, const QString &filePath) {
-        connect(tab->bridgeManager, &BridgeManager::textRetrieved, this,
-                [=](const QString &content) {
-                    QFile file(filePath);
-                    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                        QMessageBox::warning(this, tr("Error"), tr("Cannot save file: ") + file.errorString());
-                        return;
-                    }
-
-                    QTextStream out(&file);
-                    out << content;
-                    file.close();
-
-                    tab->filePath = filePath;
-                    setLanguage(tab, filePath);
-                    statusBar->showMessage("Saved: " + filePath);
-                }, Qt::SingleShotConnection);
-
-        tab->bridgeManager->retrieveText();
-    }
-
-    int findOpenTabByPath(const QString &filePath) const {
+    int findOpenTabByPath(const QString &filePath) {
         for (int i = 0; i < tabWidget->count(); ++i) {
-            EditorTab *tab = qobject_cast<EditorTab*>(tabWidget->widget(i));
-            if (tab && QFileInfo(tab->filePath) == QFileInfo(filePath)) {
+            EditorTab *tab = qobject_cast<EditorTab *>(tabWidget->widget(i));
+            if (tab && tab->filePath == filePath) {
                 return i;
             }
         }
         return -1;
     }
 
+    QString loadFileContent(const QString &filePath) {
+        QFile file(filePath);
+        if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, tr("Error"), tr("Cannot open file"));
+            return QString();
+        }
+
+        QTextStream in(&file);
+        QString content = in.readAll();
+        file.close();
+        return content;
+    }
+
+    EditorTab* createEditorTab(const QString &filePath = QString()) {
+        EditorTab *tab = new EditorTab(isDarkMode());
+
+        if (!filePath.isEmpty()) {
+            tab->editor->setPlainText(loadFileContent(filePath));
+            setLanguage(tab, filePath);
+        }
+
+        if (tabWidget->indexOf(tab) < 0) {
+            tabWidget->addTab(tab, filePath.isEmpty() ? "Untitled" : QFileInfo(filePath).fileName());
+        }
+
+        tabWidget->setCurrentWidget(tab);
+        return tab;
+    }
+
+    EditorTab* currentEditor() const {
+        return qobject_cast<EditorTab*>(tabWidget->currentWidget());
+    }
+
+    void writeToFile(EditorTab *tab, const QString &filePath) {
+        QFile file(filePath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, tr("Error"), tr("Cannot save file"));
+            return;
+        }
+
+        QTextStream out(&file);
+        out << tab->editor->toPlainText();
+        file.close();
+
+        tab->filePath = filePath;
+        setLanguage(tab, filePath);
+        statusBar->showMessage("Saved: " + filePath);
+    }
+
 private slots:
+    void createNewTab() {
+        EditorTab *tab = new EditorTab(isDarkMode());
+        tabWidget->addTab(tab, "Untitled");
+        tabWidget->setCurrentWidget(tab);
+    }
+
     void openFile() {
-        QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"));
-        if (!fileName.isEmpty()) openFromPath(fileName);
+        QString filePath = QFileDialog::getOpenFileName(this, tr("Open File"));
+        if (!filePath.isEmpty()) {
+            openFromPath(filePath);
+        }
     }
 
     void openFromPath(const QString &filePath) {
@@ -409,28 +328,22 @@ private slots:
             return;
         }
 
-        EditorTab *tab = new EditorTab(isDarkMode(), tcpServer);
-
-        QObject::connect(tab->view, &QWebEngineView::loadFinished, this, [this, tab, filePath](bool ok) {
-            if (!ok) {
-                QMessageBox::warning(this, "Load Error", "Failed to load the Monaco Editor.");
-                tab->deleteLater();
-                return;
-            }
-
-            tab->bridgeManager->loadText(filePath);
-            setLanguage(tab, filePath);
-
-            tabWidget->addTab(tab, QFileInfo(filePath).fileName());
-            tabWidget->setCurrentWidget(tab);
-        });
+        EditorTab *tab = new EditorTab(isDarkMode());
+        tab->editor->setPlainText(loadFileContent(filePath));
+        setLanguage(tab, filePath);
+        tabWidget->addTab(tab, QFileInfo(filePath).fileName());
+        tabWidget->setCurrentWidget(tab);
     }
+
     void saveFile() {
         EditorTab *tab = currentEditor();
         if (!tab) return;
 
-        if (tab->filePath.isEmpty()) saveFileAs();
-        else writeToFile(tab, tab->filePath);
+        if (tab->filePath.isEmpty()) {
+            saveFileAs();
+        } else {
+            writeToFile(tab, tab->filePath);
+        }
     }
 
     void saveFileAs() {
@@ -438,12 +351,16 @@ private slots:
         if (!tab) return;
 
         QString fileName = QFileDialog::getSaveFileName(this, tr("Save File As"));
-        if (!fileName.isEmpty()) writeToFile(tab, fileName);
+        if (!fileName.isEmpty()) {
+            writeToFile(tab, fileName);
+        }
     }
 
     void closeTab(int index) {
         QWidget *widget = tabWidget->widget(index);
-        if (widget) widget->deleteLater();
+        if (widget) {
+            widget->deleteLater();
+        }
         tabWidget->removeTab(index);
     }
 };
