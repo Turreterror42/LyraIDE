@@ -25,9 +25,10 @@
 #include <QStatusBar>
 #include <QLabel>
 #include <QFileInfo>
-#include <QLabel>
 #include <QDir>
-#include "QCodeEditor.h"
+#include <KTextEditor/View>
+#include <KTextEditor/Document>
+#include <KTextEditor/Editor>
 
 #ifndef _WIN32
 #include <qtermwidget.h>
@@ -40,14 +41,16 @@ class EditorTab : public QWidget {
     Q_OBJECT
 
 public:
-    QString filePath;
-    QMonacoEditor *editor;
+    KTextEditor::Document *doc;
+    KTextEditor::View *view;
 
-    explicit EditorTab(bool theme, QWidget *parent = nullptr) : QWidget(parent) {
-        editor = new QMonacoEditor(this);
+    explicit EditorTab(KTextEditor::Editor*& editor, bool theme, QWidget *parent = nullptr) : QWidget(parent) {
+        doc = editor->createDocument(nullptr);
+        view = doc->createView(nullptr);
+
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
-        layout->addWidget(editor);
+        layout->addWidget(view);
         setLayout(layout);
     }
 };
@@ -57,24 +60,25 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
+        TextEditor = KTextEditor::Editor::instance();
+
         setWindowTitle("LyraIDE");
         setWindowIcon(QIcon(":/images/icons/icon.ico"));
         initUI();
         setStyle();
     }
 
-    ~MainWindow() {
+    ~MainWindow() override {
         qDebug() << "Good Bye";
     }
 
 private:
     QMenu *fileMenu, *fileEdit, *fileHelp;
-    QAction *newFileAction, *openAction, *saveAction, *saveAsAction, *quitAction;
-    QAction *undoAction, *redoAction, *selectAllAction, *aboutQt;
+    QAction *aboutQt;
     QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
-    QStatusBar *statusBar;
     QMap<QString, QString> extensionToLanguageMap;
+    KTextEditor::Editor *TextEditor;
 
 #ifndef _WIN32
     QTermWidget *terminal;
@@ -125,12 +129,6 @@ private:
 
         createMenu();
         connectActions();
-
-        statusBar = new QStatusBar;
-        setStatusBar(statusBar);
-        statusBar->showMessage("Ready");
-
-        initializeExtensionMap();
     }
 
     void createMenu() {
@@ -138,77 +136,21 @@ private:
         fileEdit = menuBar()->addMenu("&Edit");
         fileHelp = menuBar()->addMenu("&Help");
 
-        newFileAction = new QAction("New File", this);
-        openAction = new QAction("Open", this);
-        saveAction = new QAction("Save", this);
-        saveAsAction = new QAction("Save As...", this);
-        quitAction = new QAction("Quit", this);
-
-        undoAction = new QAction("Undo", this);
-        redoAction = new QAction("Redo", this);
-        selectAllAction = new QAction("Select All", this);
-
         aboutQt = new QAction("About Qt", this);
 
-        newFileAction->setShortcut(QKeySequence("Ctrl+N"));
-        openAction->setShortcut(QKeySequence("Ctrl+O"));
-        saveAction->setShortcut(QKeySequence("Ctrl+S"));
-        saveAsAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
-        quitAction->setShortcut(QKeySequence("Ctrl+Q"));
-
-        undoAction->setShortcut(QKeySequence("Ctrl+Z"));
-        redoAction->setShortcut(QKeySequence("Ctrl+Shift+Z"));
-        selectAllAction->setShortcut(QKeySequence("Ctrl+A"));
-
-        fileMenu->addAction(newFileAction);
-        fileMenu->addAction(openAction);
-        fileMenu->addAction(saveAction);
-        fileMenu->addAction(saveAsAction);
-        fileMenu->addAction(quitAction);
-
-        fileEdit->addAction(undoAction);
-        fileEdit->addAction(redoAction);
-        fileEdit->addAction(selectAllAction);
+        fileMenu->addSeparator();
 
         fileHelp->addAction(aboutQt);
     }
 
     void connectActions() {
-        connect(newFileAction, &QAction::triggered, this, &MainWindow::createNewTab);
-        connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
-        connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
-        connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
-        connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
-
         connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
         connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
         connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     }
 
-    void initializeExtensionMap() {
-        extensionToLanguageMap = {
-            {"cpp", "cpp"}, {"h", "cpp"}, {"py", "python"},
-            {"js", "javascript"}, {"ts", "typescript"}, {"html", "html"},
-            {"css", "css"}, {"json", "json"}, {"java", "java"},
-            {"cs", "csharp"}, {"xml", "xml"}, {"sql", "sql"},
-            {"sh", "shell"}, {"rb", "ruby"}, {"php", "php"},
-            {"go", "go"}, {"rs", "rust"}, {"swift", "swift"},
-            {"md", "markdown"}, {"yml", "yaml"}, {"yaml", "yaml"}
-        };
-    }
-
-    void setLanguage(EditorTab *tab, const QString &filePath) {
-        QFileInfo info(filePath);
-        QString ext = info.suffix().toLower();
-        QString lang = extensionToLanguageMap.value(ext, "plaintext");
-
-        tab->filePath = filePath;
-        tabWidget->setTabText(tabWidget->indexOf(tab), info.fileName());
-        statusBar->showMessage(QString("Editing: %1 | Language: %2").arg(info.fileName(), lang));
-    }
-
     void setStyle() {
-        // I will add a light theme later
+        // For now, force dark mode style; extend to light later
         if (isDarkMode() || !isDarkMode()) {
 #ifndef _WIN32
             terminal->setColorScheme(":/ColorSchemes/Dark.colorscheme");
@@ -251,32 +193,23 @@ private:
     int findOpenTabByPath(const QString &filePath) {
         for (int i = 0; i < tabWidget->count(); ++i) {
             EditorTab *tab = qobject_cast<EditorTab *>(tabWidget->widget(i));
-            if (tab && tab->filePath == filePath) {
+            if (tab && tab->doc->url().toLocalFile() == filePath) {
                 return i;
             }
         }
         return -1;
     }
 
-    QString loadFileContent(const QString &filePath) {
-        QFile file(filePath);
-        if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, tr("Error"), tr("Cannot open file"));
-            return QString();
-        }
-
-        QTextStream in(&file);
-        QString content = in.readAll();
-        file.close();
-        return content;
-    }
-
     EditorTab* createEditorTab(const QString &filePath = QString()) {
-        EditorTab *tab = new EditorTab(isDarkMode());
+        EditorTab *tab = new EditorTab(TextEditor, isDarkMode());
 
         if (!filePath.isEmpty()) {
-            tab->editor->setPlainText(loadFileContent(filePath));
-            setLanguage(tab, filePath);
+            bool opened = tab->doc->openUrl(QUrl::fromLocalFile(filePath));
+            if (!opened) {
+                QMessageBox::warning(this, tr("Error"), tr("Cannot open file: %1").arg(filePath));
+                delete tab;
+                return nullptr;
+            }
         }
 
         if (tabWidget->indexOf(tab) < 0) {
@@ -291,34 +224,16 @@ private:
         return qobject_cast<EditorTab*>(tabWidget->currentWidget());
     }
 
-    void writeToFile(EditorTab *tab, const QString &filePath) {
-        QFile file(filePath);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, tr("Error"), tr("Cannot save file"));
-            return;
-        }
-
-        QTextStream out(&file);
-        out << tab->editor->toPlainText();
-        file.close();
-
-        tab->filePath = filePath;
-        setLanguage(tab, filePath);
-        statusBar->showMessage("Saved: " + filePath);
-    }
-
 private slots:
     void createNewTab() {
-        EditorTab *tab = new EditorTab(isDarkMode());
+        EditorTab *tab = new EditorTab(TextEditor, isDarkMode());
         tabWidget->addTab(tab, "Untitled");
         tabWidget->setCurrentWidget(tab);
     }
 
     void openFile() {
         QString filePath = QFileDialog::getOpenFileName(this, tr("Open File"));
-        if (!filePath.isEmpty()) {
-            openFromPath(filePath);
-        }
+        if (!filePath.isEmpty()) openFromPath(filePath);
     }
 
     void openFromPath(const QString &filePath) {
@@ -328,21 +243,19 @@ private slots:
             return;
         }
 
-        EditorTab *tab = new EditorTab(isDarkMode());
-        tab->editor->setPlainText(loadFileContent(filePath));
-        setLanguage(tab, filePath);
-        tabWidget->addTab(tab, QFileInfo(filePath).fileName());
-        tabWidget->setCurrentWidget(tab);
+        EditorTab *tab = createEditorTab(filePath);
+        if (!tab) return;
     }
 
     void saveFile() {
         EditorTab *tab = currentEditor();
         if (!tab) return;
 
-        if (tab->filePath.isEmpty()) {
+        if (tab->doc->url().isEmpty()) {
             saveFileAs();
         } else {
-            writeToFile(tab, tab->filePath);
+            bool success = tab->doc->save();
+            if (!success) QMessageBox::warning(this, tr("Save Error"), tr("Failed to save the file."));
         }
     }
 
@@ -352,16 +265,27 @@ private slots:
 
         QString fileName = QFileDialog::getSaveFileName(this, tr("Save File As"));
         if (!fileName.isEmpty()) {
-            writeToFile(tab, fileName);
+            bool success = tab->doc->saveAs(QUrl::fromLocalFile(fileName));
+            if (!success) QMessageBox::warning(this, tr("Save Error"), tr("Failed to save the file."));
         }
     }
 
     void closeTab(int index) {
         QWidget *widget = tabWidget->widget(index);
         if (widget) {
+            // Ask user if unsaved changes exist before closing - optional enhancement
+            tabWidget->removeTab(index);
             widget->deleteLater();
         }
-        tabWidget->removeTab(index);
+    }
+
+    void updateStatusBarForCurrentTab(int index) {
+        EditorTab *tab = qobject_cast<EditorTab*>(tabWidget->widget(index));
+        if (!tab) return;
+
+        QString fileName = tab->doc->url().toLocalFile().isEmpty() ? "Untitled" : QFileInfo(tab->doc->url().toLocalFile()).fileName();
+        QString ext = QFileInfo(fileName).suffix().toLower();
+        QString lang = extensionToLanguageMap.value(ext, "plaintext");
     }
 };
 
