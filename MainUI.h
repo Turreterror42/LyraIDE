@@ -26,6 +26,7 @@
 #include <QLabel>
 #include <QFileInfo>
 #include <QDir>
+#include <QKeyEvent>
 #include <KTextEditor/View>
 #include <KTextEditor/Document>
 #include <KTextEditor/Editor>
@@ -74,10 +75,10 @@ public:
 
 private:
     QMenu *fileMenu, *fileEdit, *fileTools, *fileHelp;
-    QAction *seetingsAct, *aboutQt;
+    QAction *newFileAction, *openAction, *saveAction, *saveAsAction, *quitAction;
+    QAction *seetingsAct, *undoAction, *redoAction, *selectAllAction, *aboutQt;
     QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
-    QMap<QString, QString> extensionToLanguageMap;
     KTextEditor::Editor *TextEditor;
 
 #ifndef _WIN32
@@ -129,6 +130,7 @@ private:
 
         createMenu();
         connectActions();
+        qApp->installEventFilter(this);
     }
 
     void createMenu() {
@@ -137,14 +139,56 @@ private:
         fileTools = menuBar()->addMenu("Tools");
         fileHelp = menuBar()->addMenu("Help");
 
+        newFileAction = new QAction("New File", this);
+        openAction = new QAction("Open", this);
+        saveAction = new QAction("Save", this);
+        saveAsAction = new QAction("Save As...", this);
+        quitAction = new QAction("Quit", this);
+
+        undoAction = new QAction("Undo", this);
+        redoAction = new QAction("Redo", this);
+        selectAllAction = new QAction("Select All", this);
+
         seetingsAct = new QAction("Settings", this);
         aboutQt = new QAction("About Qt", this);
 
+        newFileAction->setShortcut(QKeySequence("Ctrl+N"));
+        openAction->setShortcut(QKeySequence("Ctrl+O"));
+        saveAction->setShortcut(QKeySequence("Ctrl+S"));
+        saveAsAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
+        quitAction->setShortcut(QKeySequence("Ctrl+Q"));
+
+        undoAction->setShortcut(QKeySequence("Ctrl+Z"));
+        redoAction->setShortcut(QKeySequence("Ctrl+Shift+Z"));
+        selectAllAction->setShortcut(QKeySequence("Ctrl+A"));
+
+        fileMenu->addAction(newFileAction);
+        fileMenu->addAction(openAction);
+        fileMenu->addAction(saveAction);
+        fileMenu->addAction(saveAsAction);
+        fileMenu->addAction(quitAction);
+        fileEdit->addAction(undoAction);
+        fileEdit->addAction(redoAction);
+        fileEdit->addAction(selectAllAction);
         fileTools->addAction(seetingsAct);
         fileHelp->addAction(aboutQt);
+
+        saveAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        saveAsAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        undoAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        redoAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        selectAllAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     }
 
     void connectActions() {
+        QObject::connect(openAction, &QAction::triggered, this, [this]() { QString fileName = QFileDialog::getOpenFileName(this, tr("Open File")); if (!fileName.isEmpty()) openFromPath(fileName); });
+        QObject::connect(saveAction, &QAction::triggered, this, [this]() { sendKeyStroke(Qt::Key_S, Qt::ControlModifier, "s"); });
+        QObject::connect(saveAsAction, &QAction::triggered, this, [this]() { sendKeyStroke(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier, "S"); });
+        QObject::connect(undoAction, &QAction::triggered, this, [this]() { sendKeyStroke(Qt::Key_Z, Qt::ControlModifier, "z"); });
+        QObject::connect(redoAction, &QAction::triggered, this, [this]() { sendKeyStroke(Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier, "Z"); });
+        QObject::connect(selectAllAction, &QAction::triggered, this, [this]() { sendKeyStroke(Qt::Key_A, Qt::ControlModifier, "a"); });
+        QObject::connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
+        QObject::connect(newFileAction, &QAction::triggered, this, &MainWindow::createNewTab);
         QObject::connect(seetingsAct, &QAction::triggered, this, [this]() { TextEditor->configDialog(nullptr); });
         QObject::connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
         QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
@@ -226,16 +270,22 @@ private:
         return qobject_cast<EditorTab*>(tabWidget->currentWidget());
     }
 
+    void sendKeyStroke(Qt::Key key, Qt::KeyboardModifiers modifiers, const QString &text) {
+        EditorTab *tab = currentEditor();
+        if (tab && tab->view) {
+            QKeyEvent pressEvent(QEvent::KeyPress, key, modifiers, text);
+            QKeyEvent releaseEvent(QEvent::KeyRelease, key, modifiers, text);
+            QCoreApplication::sendEvent(tab->view, &pressEvent);
+            QCoreApplication::sendEvent(tab->view, &releaseEvent);
+        }
+    }
+
+
 private slots:
     void createNewTab() {
         EditorTab *tab = new EditorTab(TextEditor, isDarkMode());
         tabWidget->addTab(tab, "Untitled");
         tabWidget->setCurrentWidget(tab);
-    }
-
-    void openFile() {
-        QString filePath = QFileDialog::getOpenFileName(this, tr("Open File"));
-        if (!filePath.isEmpty()) openFromPath(filePath);
     }
 
     void openFromPath(const QString &filePath) {
@@ -249,45 +299,12 @@ private slots:
         if (!tab) return;
     }
 
-    void saveFile() {
-        EditorTab *tab = currentEditor();
-        if (!tab) return;
-
-        if (tab->doc->url().isEmpty()) {
-            saveFileAs();
-        } else {
-            bool success = tab->doc->save();
-            if (!success) QMessageBox::warning(this, tr("Save Error"), tr("Failed to save the file."));
-        }
-    }
-
-    void saveFileAs() {
-        EditorTab *tab = currentEditor();
-        if (!tab) return;
-
-        QString fileName = QFileDialog::getSaveFileName(this, tr("Save File As"));
-        if (!fileName.isEmpty()) {
-            bool success = tab->doc->saveAs(QUrl::fromLocalFile(fileName));
-            if (!success) QMessageBox::warning(this, tr("Save Error"), tr("Failed to save the file."));
-        }
-    }
-
     void closeTab(int index) {
         QWidget *widget = tabWidget->widget(index);
         if (widget) {
-            // Ask user if unsaved changes exist before closing - optional enhancement
             tabWidget->removeTab(index);
             widget->deleteLater();
         }
-    }
-
-    void updateStatusBarForCurrentTab(int index) {
-        EditorTab *tab = qobject_cast<EditorTab*>(tabWidget->widget(index));
-        if (!tab) return;
-
-        QString fileName = tab->doc->url().toLocalFile().isEmpty() ? "Untitled" : QFileInfo(tab->doc->url().toLocalFile()).fileName();
-        QString ext = QFileInfo(fileName).suffix().toLower();
-        QString lang = extensionToLanguageMap.value(ext, "plaintext");
     }
 };
 
