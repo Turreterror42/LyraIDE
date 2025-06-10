@@ -73,8 +73,8 @@ public:
     }
 
 private:
-    QMenu *fileMenu, *fileEdit, *fileHelp;
-    QAction *aboutQt;
+    QMenu *fileMenu, *fileEdit, *fileTools, *fileHelp;
+    QAction *seetingsAct, *aboutQt;
     QTabWidget *tabWidget;
     FileSidebarWidget *sidebar;
     QMap<QString, QString> extensionToLanguageMap;
@@ -132,21 +132,23 @@ private:
     }
 
     void createMenu() {
-        fileMenu = menuBar()->addMenu("&File");
-        fileEdit = menuBar()->addMenu("&Edit");
-        fileHelp = menuBar()->addMenu("&Help");
+        fileMenu = menuBar()->addMenu("File");
+        fileEdit = menuBar()->addMenu("Edit");
+        fileTools = menuBar()->addMenu("Tools");
+        fileHelp = menuBar()->addMenu("Help");
 
+        seetingsAct = new QAction("Settings", this);
         aboutQt = new QAction("About Qt", this);
 
-        fileMenu->addSeparator();
-
+        fileTools->addAction(seetingsAct);
         fileHelp->addAction(aboutQt);
     }
 
     void connectActions() {
-        connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
-        connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
-        connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
+        QObject::connect(seetingsAct, &QAction::triggered, this, [this]() { TextEditor->configDialog(nullptr); });
+        QObject::connect(aboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
+        QObject::connect(sidebar, &FileSidebarWidget::fileSelected, this, &MainWindow::openFromPath);
+        QObject::connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     }
 
     void setStyle() {
